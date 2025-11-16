@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CashBox Secure - لوحة التحكم</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="dashboard.v2.css" />
+    <link rel="stylesheet" href="print.css" />
+  </head>
+  <body>
+    <div class="dashboard-container">
+      <aside class="sidebar">
+        <div class="logo">CashBox Secure</div>
+        <nav class="sidebar-nav">
+          <a href="#" class="nav-item active">لوحة التحكم</a>
+          <a href="#" class="nav-item">العمليات (قريباً)</a>
+          <a href="#" class="nav-item">التقارير (قريباً)</a>
+        </nav>
+      </aside>
+<main class="main-content">
+    <header class="topbar">
+          <div class="topbar-title">لوحة التحكم الرئيسية</div>
+          <div class="topbar-user">
+            
+            <button id="themeToggleBtn" class="theme-toggle-btn">🌙</button>
+            
+            <span class="user-greeting" id="userGreeting">مرحباً، </span>
+            <span id="username">...</span>
+
+            <span class="online-indicator"></span>
+            
+            <button id="logoutBtn" class="btn btn-secondary">تسجيل الخروج</button>
+            
+          </div>
+        </header>
+
+        <section class="dashboard-metrics">
+          <div class="metric-card">
+            <h4>إجمالي الإيراد (البرنامج)</h4>
+            <p id="metricTotalRevenue">0.00</p>
+          </div>
+          <div class="metric-card">
+            <h4>إجمالي الكاش الفعلي</h4>
+            <p id="metricTotalCash">0.00</p>
+          </div>
+          <div class="metric-card">
+            <h4>إجمالي الشبكة</h4>
+            <p id="metricTotalNet">0.00</p>
+          </div>
+          <div class="metric-card">
+            <h4>إجمالي الانحراف</h4>
+            <p id="metricTotalVariance" class="variance-neutral">0.00</p>
+          </div>
+        </section>
+
+        <section class="table-wrapper">
+          <div class="table-header">
+            <h2>سجل التقفيلات</h2>
+            
+            <div class="table-header-actions">
+              <div class="filter-controls">
+                <input type="text" id="filterSearch" class="filter-input" placeholder="ابحث (بالاسم، ملاحظة...)" />
+                <button id="filterClearBtn" class="btn btn-secondary btn-sm">مسح الفلتر</button>
+              </div>
+
+              <button id="compareBtn" class="btn btn-secondary">📊 مقارنة</button>
+              <button id="printLastBtn" class="btn btn-secondary">🖨️ طباعة الأخير</button>
+              <button id="printAllBtn" class="btn btn-secondary">🖨️ طباعة الكل</button>
+              <button id="newRowBtn" class="btn btn-primary">➕ صف جديد</button>
+            </div>
+            </div>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th class="col-checkbox">
+                    <input type="checkbox" id="selectAllCompare" title="تحديد الكل" />
+                  </th>
+                  <th>م</th>
+                  <th>احتياطي الخزينة</th>
+                  <th>المصروف اليومي</th>
+                  <th>اسم الموظف</th>
+                  <th>التاريخ/وقت الإغلاق</th>
+                  <th>كاش</th>
+                  <th>Visa</th>
+                  <th>MasterCard</th>
+                  <th>American</th>
+                  <th>مدي</th>
+                  <th>تحويل بنك</th>
+                  <th>الإيراد (البرنامج)</th>
+                  <th>الانحراف</th>
+                  <th>الملاحظات</th>
+                  <th>إجراءات</th>
+                </tr>
+              </thead>
+              <tbody id="mainTableBody">
+                </tbody>
+            </table>
+          </div>
+          
+          <div id="paginationControls" class="pagination-controls" style="display: none;">
+              <span id="pageInfo" class="page-info"></span>
+              <div id="pageButtons" class="page-buttons">
+                  </div>
+          </div>
+          
+        </section>
+
+        <section class="close-wrapper">
+          <div id="varianceMessage" class="variance-message" style="display: none;"></div>
+          <button id="closeFundBtn" class="btn btn-primary btn-large">
+            <div class="progress-bar" id="closeProgress"></div>
+            <span id="closeBtnLabel">🔒 إغلاق الصندوق</span>
+          </button>
+        </section>
+
+        <section class="tools-wrapper">
+          <div class="tool-card notes-box">
+            <h3>📝 ملاحظات التقفيلة</h3>
+            <textarea
+              id="notesBox"
+              placeholder="اكتب ملاحظاتك هنا (مثل: أسباب الانحراف، إلخ.)"
+            ></textarea>
+          </div>
+
+          <div class="tool-card cash-calc">
+            <h3>💵 حاسبة الكاش</h3>
+            <table id="cashCalcTable">
+                <thead>
+                  <tr>
+                    <th>الفئة</th>
+                    <th>العدد</th>
+                    <th>المجموع</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>500</td>
+                    <td contenteditable="true" data-denom="500"></td>
+                    <td data-total="500">0</td>
+                  </tr>
+                  <tr>
+                    <td>200</td>
+                    <td contenteditable="true" data-denom="200"></td>
+                    <td data-total="200">0</td>
+                  </tr>
+                  <tr>
+                    <td>100</td>
+                    <td contenteditable="true" data-denom="100"></td>
+                    <td data-total="100">0</td>
+                  </tr>
+                  <tr>
+                    <td>50</td>
+                    <td contenteditable="true" data-denom="50"></td>
+                    <td data-total="50">0</td>
+                  </tr>
+                  <tr>
+                    <td>20</td>
+                    <td contenteditable="true" data-denom="20"></td>
+                    <td data-total="20">0</td>
+                  </tr>
+                  <tr>
+                    <td>10</td>
+                    <td contenteditable="true" data-denom="10"></td>
+                    <td data-total="10">0</td>
+                  </tr>
+                  <tr>
+                    <td>5</td>
+                    <td contenteditable="true" data-denom="5"></td>
+                    <td data-total="5">0</td>
+                  </tr>
+                  <tr>
+                    <td>1</td>
+                    <td contenteditable="true" data-denom="1"></td>
+                    <td data-total="1">0</td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="2">الإجمالي</td>
+                    <td id="cashCalcTotal">0</td>
+                  </tr>
+                </tfoot>
+            </table>
+            <div class="cash-calc-actions">
+              <button id="clearCashCalc" class="btn btn-secondary">
+                🔄 تصفير الحاسبة
+              </button>
+              <button id="applyCashTotalBtn" class="btn btn-primary">
+                ↖️ استخدام الإجمالي
+              </button>
+            </div>
+          </div>
+
+          <div class="tool-card calc">
+            <h3>🧮 آلة حاسبة</h3>
+            
+            <div id="calcExpression" class="calc-expression"></div>
+
+            <input
+              type="text"
+              id="calcDisplay"
+              class="calc-display"
+              value="0"
+            />
+            
+            <div class="calc-grid">
+              <button data-key="%" class="op-special">%</button>
+              <button data-key="clear" class="op-special btn-clear">C</button>
+              <button data-key="backspace" class="op-special">⌫</button>
+              <button data-key="/" class="op">÷</button>
+              
+              <button data-key="7">7</button>
+              <button data-key="8">8</button>
+              <button data-key="9">9</button>
+              <button data-key="*" class="op">×</button>
+              
+              <button data-key="4">4</button>
+              <button data-key="5">5</button>
+              <button data-key="6">6</button>
+              <button data-key="-" class="op">−</button>
+              
+              <button data-key="1">1</button>
+              <button data-key="2">2</button>
+              <button data-key="3">3</button>
+              <button data-key="+" class="op">+</button>
+              
+              <button data-key="0" class="span-2">0</button>
+              <button data-key=".">.</button>
+              <button data-key="=" class="op btn-equals">=</button>
+            </div>
+            <div id="calcHistory" class="calc-history"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toastContainer" class="toast-container"></div>
+
+    <div id="confirmModal" class="confirm-modal-overlay" style="display: none;">
+      <div class="confirm-modal-content">
+        <p id="confirmModalMessage">هل أنت متأكد؟</p>
+        <div class="confirm-modal-actions">
+          <button id="confirmModalCancel" class="btn btn-secondary">إلغاء</button>
+          <button id="confirmModalOk" class="btn btn-danger">تأكيد</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="compareModal" class="info-modal-overlay" style="display: none;">
+      <div class="info-modal-content">
+        <h3 id="compareModalTitle">مقارنة آخر تقفيلتين</h3>
+        <div id="compareModalBody">
+          </div>
+        <div class="info-modal-actions">
+          <button id="compareModalClose" class="btn btn-primary">إغلاق</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="utils.js"></script>
+    <script src="calculators.js"></script>
+    <script src="tableManager.js"></script>
+    <script src="closure.js"></script>
+    <script src="auth.js"></script>
+    <script src="printing.v2.js"></script>
+    
+    <script src="app.js"></script>
+  </body>
+</html>

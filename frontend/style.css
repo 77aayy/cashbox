@@ -1,0 +1,289 @@
+/* --- Global Reset --- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.45);
+  --glass-border: rgba(0, 0, 0, 0.05);
+  --glass-blur: 12px;
+  --primary: #0a84ff; /* Apple Blue */
+  --primary-dark: #006ae6;
+  --muted: #6b6f76;
+  --success: #16a34a;
+  --danger: #e05353;
+  --text-dark: #0f172a;
+}
+
+/* Background */
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  /* (تعديل) - خلفية احترافية أكثر */
+  background: linear-gradient(170deg, #f0f2f5, #ffffff);
+  /* (تعديل) - إضافة خط Cairo */
+  font-family: "Cairo", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 32px;
+  overflow: hidden; /* (جديد) - لمنع الـ scroll أثناء الأنيميشن */
+}
+
+.bg-pattern {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+  background-size: 18px 18px;
+  opacity: 0.4;
+}
+
+/* (جديد) - أنيميشن الدخول */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.wrap {
+  width: 100%;
+  max-width: 1000px;
+  display: flex;
+  gap: 40px;
+  align-items: center;
+}
+
+html[dir="rtl"] .wrap {
+  text-align: right;
+}
+
+.hero {
+  flex: 1;
+  padding: 28px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+  /* (جديد) - تطبيق الأنيميشن */
+  opacity: 0;
+  animation: fadeIn 0.8s ease 0.2s forwards;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 26px;
+  color: var(--text-dark);
+}
+
+.card {
+  width: 420px;
+  max-width: 100%;
+  border-radius: 16px;
+  padding: 30px;
+  box-sizing: border-box;
+  backdrop-filter: blur(var(--glass-blur)) saturate(120%);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  transition: transform 0.35s ease, box-shadow 0.35s ease;
+  position: relative;
+  min-height: 400px; /* (تعديل) - زيادة الارتفاع قليلاً */
+  /* (جديد) - تطبيق الأنيميشن */
+  opacity: 0;
+  animation: fadeIn 0.8s ease 0.4s forwards;
+}
+
+/* (جديد) - تنسيق أزرار اللغة */
+.lang-switcher {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  justify-content: flex-start;
+}
+html[dir="rtl"] .lang-switcher {
+  justify-content: flex-end;
+}
+.lang-btn {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+.lang-btn:hover {
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+.lang-btn.active {
+  background: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary-dark);
+}
+
+
+.title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.muted {
+  color: var(--muted);
+  margin-bottom: 24px; /* (تعديل) - زيادة المسافة */
+}
+
+/* Password Wrapper */
+.password-wrapper {
+  position: relative;
+  margin-top: 12px; /* (تعديل) - إضافة مسافة */
+}
+
+.toggle-pass {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  right: 12px;
+  left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b6f76;
+  font-size: 18px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+html[dir="rtl"] .toggle-pass {
+  right: auto;
+  left: 12px;
+}
+
+
+/* Inputs */
+input {
+  width: 100%;
+  padding: 14px 16px; /* (تعديل) - زيادة البادينج */
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.7);
+  transition: 0.2s ease;
+  font-size: 15px;
+  text-align: left;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02) inset; /* (جديد) - ظل داخلي */
+}
+html[dir="rtl"] input {
+  text-align: right;
+}
+
+input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.15); /* (تعديل) - إضاءة أوضح */
+  outline: none;
+  background: #fff;
+}
+
+/* Buttons */
+.actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px; /* (تعديل) - زيادة المسافة */
+}
+
+.btn {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn.primary {
+  background: linear-gradient(180deg, var(--primary), var(--primary-dark));
+  color: white;
+  box-shadow: 0 8px 20px rgba(10, 132, 255, 0.15);
+}
+.btn.primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(10, 132, 255, 0.2);
+}
+
+.btn.secondary {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid rgba(10, 132, 255, 0.18);
+}
+.btn.secondary:hover {
+  background: rgba(10, 132, 255, 0.05);
+}
+
+/* Disabled/Loading State */
+.btn:disabled {
+  background: #b0b0b0;
+  color: #f0f0f0;
+  transform: none;
+  box-shadow: none;
+  cursor: wait;
+}
+
+/* Messages */
+.msg {
+  margin-top: 16px; /* (تعديل) - زيادة المسافة */
+  font-size: 14px;
+  text-align: center;
+}
+.msg.success {
+  color: var(--success);
+}
+.msg.error {
+  color: var(--danger);
+}
+
+/* Utilities */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+
+/* (تعديل) - تحسين حركة التبديل بين اللوحات */
+.view-pane {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  position: absolute;
+  top: 30px; /* (تعديل) - إعطاء مساحة للغة */
+  left: 30px;
+  right: 30px;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.view-hidden {
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+}
+
+/* (تم الإصلاح) - إزالة القوس الزائد الذي كان يكسر الملف */

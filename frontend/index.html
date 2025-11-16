@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-lang="pageTitle">CashBox Secure — تسجيل الدخول</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="bg-pattern"></div>
+
+    <div class="wrap">
+      <section class="hero">
+        <div class="logo">CashBox Secure</div>
+        <h1 data-lang="heroTitle">نظام آمن لتقفيل الصندوق للفنادق</h1>
+        <p data-lang="heroSubtitle">حل سريع، قابل للمراجعة، ويعمل بدون انترنت لتقفيل الصندوق.</p>
+      </section>
+
+      <main>
+        <div class="card" id="card">
+
+          <div class="lang-switcher">
+            <button id="langArBtn" class="lang-btn active" data-lang-set="ar">ع</button>
+            <button id="langEnBtn" class="lang-btn" data-lang-set="en">EN</button>
+          </div>
+
+          <div id="loginView" class="view-pane">
+            <div class="title" data-lang="loginTitle">مرحباً بعودتك</div>
+            <div class="muted" data-lang="loginSubtitle">سجل الدخول إلى حسابك</div>
+
+            <form class="form" id="loginForm">
+              <label for="username" class="sr-only">Username</label>
+              <input
+                id="username"
+                type="text"
+                placeholder="اسم المستخدم"
+                data-lang-placeholder="usernamePlaceholder"
+                autocomplete="username"
+              />
+
+              <div class="password-wrapper">
+                <label for="password" class="sr-only">Password</label>
+                <input
+                  id="password"
+                  type="password"
+                  placeholder="كلمة المرور"
+                  data-lang-placeholder="passwordPlaceholder"
+                  autocomplete="current-password"
+                />
+                <button
+                  type="button"
+                  id="togglePassLogin"
+                  class="toggle-pass"
+                  aria-label="Show password"
+                >
+                  👁
+                </button>
+              </div>
+
+              <div class="actions">
+                <button class="btn primary" type="submit" data-lang="loginBtn">تسجيل الدخول</button>
+                <button class="btn secondary" type="button" id="showRegisterBtn" data-lang="showRegisterBtn">
+                  إنشاء حساب
+                </button>
+              </div>
+
+              <div
+                id="loginMsg"
+                class="msg"
+                role="alert"
+                aria-live="polite"
+              ></div>
+            </form>
+          </div>
+
+          <div id="registerView" class="view-pane view-hidden">
+            <div class="title" data-lang="registerTitle">إنشاء حساب جديد</div>
+            <div class="muted" data-lang="registerSubtitle">اختر اسم مستخدم وكلمة مرور</div>
+
+            <form class="form" id="registerForm">
+              <label for="regUsername" class="sr-only">Username</label>
+              <input
+                id="regUsername"
+                type="text"
+                placeholder="اسم المستخدم"
+                data-lang-placeholder="usernamePlaceholder"
+                autocomplete="username"
+              />
+
+              <div class="password-wrapper">
+                <label for="regPassword" class="sr-only">Password</label>
+                <input
+                  id="regPassword"
+                  type="password"
+                  placeholder="كلمة المرور"
+                  data-lang-placeholder="passwordPlaceholder"
+                  autocomplete="new-password"
+                />
+                <button
+                  type="button"
+                  id="togglePassReg"
+                  class="toggle-pass"
+                  aria-label="Show password"
+                >
+                  👁
+                </button>
+              </div>
+
+              <div class="actions">
+                <button class="btn primary" type="submit" data-lang="registerBtn">إنشاء الحساب</button>
+                <button class="btn secondary" type="button" id="showLoginBtn" data-lang="showLoginBtn">
+                  العودة لتسجيل الدخول
+                </button>
+              </div>
+
+              <div
+                id="regMsg"
+                class="msg"
+                role="alert"
+                aria-live="polite"
+              ></div>
+            </form>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="login.js"></script>
+  </body>
+</html>
