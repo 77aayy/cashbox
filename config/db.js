@@ -1,37 +1,29 @@
-const sqlite3 = require("sqlite3").verbose();
-const path = require("path");
+const Database = require("better-sqlite3");
 
-// تحديد المسار الصحيح للقاعدة
-const dbPath = process.env.DB_PATH || path.join(__dirname, "..", "cashbox.db");
+// تحديد مسار قاعدة البيانات
+const dbPath = process.env.DB_PATH || "./cashbox.db";
 
-// إنشاء اتصال
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error("DB Error:", err.message);
-  } else {
-    console.log("SQLite DB Connected:", dbPath);
-  }
-});
+// فتح قاعدة البيانات
+const db = new Database(dbPath);
 
-// إنشاء جدول المستخدمين لو غير موجود
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE,
-      password TEXT
-    )
-  `);
+// إنشاء جدول المستخدمين
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password TEXT
+  )
+`).run();
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS cashbox (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      date TEXT,
-      items TEXT,
-      totals TEXT,
-      userId INTEGER
-    )
-  `);
-});
+// إنشاء جدول التقفيلات
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS cashbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT,
+    items TEXT,
+    totals TEXT,
+    userId INTEGER
+  )
+`).run();
 
 module.exports = db;
