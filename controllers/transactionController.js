@@ -54,3 +54,34 @@ exports.recordTransaction = async (req, res) => {
         });
     }
 };
+
+// دالة جلب سجل المعاملات لصندوق محدد (جديد)
+exports.getTransactions = async (req, res) => {
+    try {
+        const boxId = req.params.boxId; // الـ ID سيأتي من رابط الـ URL
+        const ownerId = req.user.id; // الـ ID سيأتي من الـ Middleware (التوكن)
+
+        // 1. التحقق من أن الصندوق موجود وينتمي إلى المستخدم (حماية)
+        const box = await Box.findOne({ _id: boxId, owner: ownerId });
+        if (!box) {
+            return res.status(404).json({ message: "Box not found or unauthorized access." });
+        }
+
+        // 2. جلب جميع المعاملات المرتبطة بهذا الصندوق
+        const transactions = await Transaction.find({ box: boxId })
+            .sort({ createdAt: -1 }) // الترتيب من الأحدث للأقدم
+            .select('-__v'); 
+
+        return res.status(200).json({ 
+            boxBalance: box.balance,
+            count: transactions.length, 
+            transactions 
+        });
+
+    } catch (error) {
+        return res.status(500).json({ 
+            message: "Failed to retrieve transaction history.", 
+            error: error.message 
+        });
+    }
+};
