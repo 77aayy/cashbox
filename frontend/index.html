@@ -1,92 +1,94 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title data-lang="pageTitle">CashBox Secure — تسجيل الدخول</title>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CashBox Secure Login</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <div class="animated-bg"></div>
 
-    <link rel="stylesheet" href="style.css" />
-  </head>
+    <div class="container">
+        <button id="lang-btn" class="lang-switch">
+            <i class="fas fa-globe"></i> <span>English</span>
+        </button>
 
-  <body>
-    <div class="bg-pattern"></div>
+        <div class="card-3d-wrap">
+            <div class="card-3d-wrapper" id="main-card">
+                
+                <div class="card-front">
+                    <div class="center-wrap">
+                        <div class="section text-center">
+                            <div class="logo-area">
+                                <i class="fas fa-vault logo-icon"></i>
+                                <h4 class="mb-4 pb-3" data-lang="title">CashBox</h4>
+                            </div>
+                            <h2 data-lang="loginTitle">تسجيل الدخول</h2>
+                            
+                            <form id="loginForm">
+                                <div class="form-group">
+                                    <input type="text" class="form-style" id="username" placeholder=" " autocomplete="off">
+                                    <label for="username">
+                                        <i class="fas fa-user"></i> <span data-lang="userLabel">اسم المستخدم</span>
+                                    </label>
+                                </div>
+                                <div class="form-group mt-2">
+                                    <input type="password" class="form-style" id="password" placeholder=" " autocomplete="off">
+                                    <label for="password">
+                                        <i class="fas fa-lock"></i> <span data-lang="passLabel">كلمة المرور</span>
+                                    </label>
+                                    <i class="input-icon fas fa-eye" id="togglePassLogin"></i>
+                                </div>
+                                <button type="submit" class="btn mt-4" data-lang="loginBtn">دخول آمن</button>
+                            </form>
+                            
+                            <p class="mb-0 mt-4 text-center">
+                                <span data-lang="noAccount">ليس لديك حساب؟</span> 
+                                <a href="#0" class="link" id="flip-to-register" data-lang="createLink">إنشاء حساب موظف</a>
+                            </p>
+                            <div id="loginMsg" class="msg-box hidden"></div>
+                        </div>
+                    </div>
+                </div>
 
-    <div class="wrap">
-      <section class="hero">
-        <div class="logo">CashBox Secure</div>
-        <h1 data-lang="heroTitle">نظام آمن لتقفيل الصندوق للفنادق</h1>
-        <p data-lang="heroSubtitle">حل سريع، قابل للمراجعة، ويعمل بدون انترنت لتقفيل الصندوق.</p>
-      </section>
+                <div class="card-back">
+                    <div class="center-wrap">
+                        <div class="section text-center">
+                            <h2 data-lang="regTitle">مستخدم جديد</h2>
+                            <p class="sub-text" data-lang="regSub">إعداد حساب موظف جديد</p>
+                            
+                            <form id="registerForm">
+                                <div class="form-group">
+                                    <input type="text" class="form-style" id="regUsername" placeholder=" " autocomplete="off">
+                                    <label for="regUsername">
+                                        <i class="fas fa-user-plus"></i> <span data-lang="userLabel">اسم المستخدم</span>
+                                    </label>
+                                </div>
+                                <div class="form-group mt-2">
+                                    <input type="password" class="form-style" id="regPassword" placeholder=" " autocomplete="off">
+                                    <label for="regPassword">
+                                        <i class="fas fa-shield-alt"></i> <span data-lang="passLabel">كلمة المرور</span>
+                                    </label>
+                                </div>
+                                <button type="submit" class="btn mt-4 btn-reg" data-lang="regBtn">إنشاء الحساب</button>
+                            </form>
 
-      <main>
-        <div class="card" id="card">
+                            <p class="mb-0 mt-4 text-center">
+                                <a href="#0" class="link" id="flip-to-login" data-lang="backLink">العودة لتسجيل الدخول</a>
+                            </p>
+                            <div id="regMsg" class="msg-box hidden"></div>
+                        </div>
+                    </div>
+                </div>
 
-          <div class="lang-switcher">
-            <button id="langArBtn" class="lang-btn active" data-lang-set="ar">ع</button>
-            <button id="langEnBtn" class="lang-btn" data-lang-set="en">EN</button>
-          </div>
-
-          <!-- Login View -->
-          <div id="loginView" class="view-pane">
-            <div class="title" data-lang="loginTitle">مرحباً بعودتك</div>
-            <div class="muted" data-lang="loginSubtitle">سجل الدخول إلى حسابك</div>
-
-            <form class="form" id="loginForm">
-              <input id="username" type="text" placeholder="اسم المستخدم" />
-              <div class="password-wrapper">
-                <input id="password" type="password" placeholder="كلمة المرور" />
-              </div>
-
-              <div class="actions">
-                <button class="btn primary" type="submit">تسجيل الدخول</button>
-                <button class="btn secondary" type="button" id="showRegisterBtn">إنشاء حساب</button>
-              </div>
-
-              <div id="loginMsg" class="msg" role="alert"></div>
-            </form>
-          </div>
-
-          <!-- Register View -->
-          <div id="registerView" class="view-pane view-hidden">
-            <div class="title">إنشاء حساب جديد</div>
-            <div class="muted">اختر اسم مستخدم وكلمة مرور</div>
-
-            <form class="form" id="registerForm">
-              <input id="regUsername" type="text" placeholder="اسم المستخدم" />
-
-              <div class="password-wrapper">
-                <input id="regPassword" type="password" placeholder="كلمة المرور" />
-              </div>
-
-              <div class="actions">
-                <button class="btn primary" type="submit">إنشاء الحساب</button>
-                <button class="btn secondary" type="button" id="showLoginBtn">العودة لتسجيل الدخول</button>
-              </div>
-
-              <div id="regMsg" class="msg" role="alert"></div>
-            </form>
-          </div>
-
+            </div>
         </div>
-      </main>
     </div>
 
-    <!-- ترتيب السكربتات الصحيح -->
-
-    <!-- 1) أدوات النظام: decodeToken + showToast -->
-    <script src="utils.js"></script>
-
-    <!-- 2) سكربت النظام الأساسي -->
-<script src="frontend/config.js"></script> 
-    
-    <script src="utils.js"></script>
-
     <script src="login.js"></script>
-    
-    <script src="frontend/app.js"></script>
-  </body>
+</body>
 </html>

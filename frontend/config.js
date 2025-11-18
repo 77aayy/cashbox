@@ -1,58 +1,41 @@
-// frontend/config.js
-// هذا الملف مسؤول عن إعدادات الـ API الأساسية وإدارة التوكن
+// ===============================
+//   API CONFIG (GLOBAL)
+// ===============================
 
-// 1. Base URL (عنوان السيرفر الأساسي على Render)
-const BASE_URL = 'https://cashbox-backend.onrender.com'; 
+// 1. توجيه الرابط للسيرفر المحلي
+const API_BASE_URL = "https://cashbox-backend.onrender.com/api";
 
+async function apiRequest(endpoint, method = "GET", data = null) {
+    // جلب التوكن (لاحظ: في صفحة الدخول سميناه 'token' وليس 'authToken')
+    const token = localStorage.getItem("token"); 
 
-// 2. دالة جلب التوكن (JWT) من التخزين المحلي
-// نفترض أن التوكن تم تخزينه باسم 'authToken' بعد تسجيل الدخول
-function getToken() {
-    return localStorage.getItem('authToken');
-}
-
-
-// 3. دالة إرسال الطلبات للـ API (بشكل محمي)
-// تستخدم هذه الدالة لإرسال جميع الطلبات وتضيف التوكن تلقائياً
-async function apiRequest(endpoint, method = 'GET', data = null) {
-    const token = getToken();
-    
-    // بناء رأس الطلب (Headers)
-    const headers = {
-        'Content-Type': 'application/json',
+    const options = {
+        method,
+        headers: {
+            "Content-Type": "application/json",
+        }
     };
-    
-    // إضافة التوكن إذا كان متوفراً (لحماية المسارات)
+
+    // إضافة التوكن للهيدر
     if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+        options.headers["x-auth-token"] = token;
     }
 
-    // بناء خيارات الطلب
-    const options = {
-        method: method,
-        headers: headers,
-    };
-
-    // إضافة الجسم (Body) إذا كان الطلب من نوع POST أو PUT أو DELETE
-    if (data && (method === 'POST' || method === 'PUT' || method === 'DELETE')) {
+    if (data) {
         options.body = JSON.stringify(data);
     }
 
-    // تنفيذ الطلب باستخدام fetch
     try {
-        const response = await fetch(`${BASE_URL}${endpoint}`, options);
-        const responseData = await response.json();
-
-        // التحقق من رمز الحالة (Status Code)
-        if (!response.ok) {
-            // رمي خطأ يحتوي على رسالة الخطأ من السيرفر
-            throw new Error(responseData.message || `HTTP error! Status: ${response.status}`);
+        const res = await fetch(API_BASE_URL + endpoint, options);
+        // إذا انتهت صلاحية التوكن
+        if (res.status === 401) {
+            localStorage.clear();
+            window.location.href = "index.html";
+            return null;
         }
-
-        return responseData;
-
-    } catch (error) {
-        console.error('API Request Failed:', error.message);
-        throw error;
+        return await res.json();
+    } catch (err) {
+        console.error("API Error:", err);
+        return { message: "تعذر الاتصال بالسيرفر", error: err.message };
     }
 }

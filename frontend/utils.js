@@ -1,94 +1,98 @@
-/**
- * دالة مساعدة لفك تشفير التوكن (JWT)
- */
-function decodeToken(token) {
-  try {
-    const payloadBase64 = token.split(".")[1];
-    const payloadJson = atob(payloadBase64);
-    return JSON.parse(payloadJson);
-  } catch (e) {
-    console.error("Failed to decode token:", e);
-    return null;
-  }
-}
-
-/**
- * دالة لإظهار رسالة تنبيه منبثقة (Toast)
- */
-function showToast(message, type = "info", duration = 2000) {
-  const container = document.getElementById("toastContainer");
-  if (!container) return;
-
-  const toast = document.createElement("div");
-  toast.className = `toast ${type}`;
-  toast.textContent = message;
-
-  container.appendChild(toast);
-
-  setTimeout(() => {
-    if (toast.parentNode === container) {
-      container.removeChild(toast);
+// ===============================
+//   TOAST MESSAGES (نظام التنبيهات الحديث)
+// ===============================
+function showToast(msg, type = "info") {
+    // البحث عن الحاوية في الصفحة
+    let container = document.getElementById("toastContainer");
+    
+    // إذا لم تكن موجودة (كما في صفحة الدخول)، نستخدم التنبيه العادي كبديل
+    if (!container) {
+        // محاولة البحث عن عنصر الرسائل في صفحة الدخول
+        const loginMsg = document.getElementById("loginMsg");
+        if (loginMsg && !loginMsg.classList.contains("hidden")) {
+             loginMsg.textContent = msg;
+             return;
+        }
+        alert(msg); 
+        return;
     }
-  }, duration);
+
+    // إنشاء عنصر التنبيه
+    const toast = document.createElement("div");
+    toast.className = `toast toast-${type}`;
+    
+    // تحديد الأيقونة حسب النوع
+    let icon = "";
+    switch (type) {
+        case "success": icon = "✅"; break;
+        case "error": icon = "❌"; break;
+        case "warning": icon = "⚠️"; break;
+        default: icon = "ℹ️";
+    }
+
+    toast.innerHTML = `
+        <span class="toast-icon">${icon}</span>
+        <span class="toast-msg">${msg}</span>
+    `;
+
+    // إضافة التنبيه للحاوية
+    container.appendChild(toast);
+
+    // حذف التنبيه تلقائياً بعد 3 ثواني
+    setTimeout(() => {
+        toast.style.animation = "fadeOut 0.3s forwards";
+        toast.addEventListener("animationend", () => {
+            toast.remove();
+        });
+    }, 3000);
 }
 
 
-/**
- * دالة لإظهار نافذة تأكيد مخصصة
- */
-function showConfirmModal(message, onConfirm) {
-  const modal = document.getElementById("confirmModal");
-  const messageEl = document.getElementById("confirmModalMessage");
-  const cancelBtn = document.getElementById("confirmModalCancel");
-  const okBtn = document.getElementById("confirmModalOk");
+// ===============================
+//   LANGUAGE SYSTEM
+// ===============================
 
-  if (!modal || !messageEl || !cancelBtn || !okBtn) return;
+const translations = {
+    ar: {
+        heroTitle: "نظام آمن لتقفيل الصندوق للفنادق",
+        heroSubtitle: "حل سريع، قابل للمراجعة، ويعمل بدون إنترنت لتقفيل الصندوق.",
+        loginTitle: "مرحباً بعودتك",
+        loginSubtitle: "سجل الدخول إلى حسابك",
+        registerTitle: "إنشاء حساب جديد",
+        registerSubtitle: "اختر اسم مستخدم وكلمة مرور",
+    },
+    en: {
+        heroTitle: "Secure Cash Box System for Hotels",
+        heroSubtitle: "Fast, auditable and works offline for cash closing.",
+        loginTitle: "Welcome Back",
+        loginSubtitle: "Login to your account",
+        registerTitle: "Create New Account",
+        registerSubtitle: "Choose username and password",
+    }
+};
 
-  messageEl.textContent = message;
-  modal.style.display = "flex";
+// تغيير اللغة (يعمل بشكل أساسي في صفحة الدخول)
+function switchLanguage(lang) {
+    localStorage.setItem("lang", lang);
+    
+    // تطبيق النصوص إذا كانت العناصر موجودة
+    const updateText = (id, text) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    };
 
-  const newOkBtn = okBtn.cloneNode(true);
-  okBtn.parentNode.replaceChild(newOkBtn, okBtn);
-  
-  const newCancelBtn = cancelBtn.cloneNode(true);
-  cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+    updateText("heroTitle", translations[lang].heroTitle);
+    updateText("heroSubtitle", translations[lang].heroSubtitle);
 
-  newOkBtn.addEventListener("click", () => {
-    modal.style.display = "none";
-    onConfirm(); 
-  });
+    const loginTitle = document.querySelector("#loginView .title");
+    if (loginTitle) loginTitle.textContent = translations[lang].loginTitle;
 
-  newCancelBtn.addEventListener("click", () => {
-    modal.style.display = "none";
-  });
-}
+    const loginSub = document.querySelector("#loginView .muted");
+    if (loginSub) loginSub.textContent = translations[lang].loginSubtitle;
 
-/**
- * (جديد) - دالة لإظهار نافذة معلومات (لعرض التقارير)
- * @param {string} title - عنوان النافذة
- * @param {string} htmlContent - محتوى HTML (مثل جدول)
- */
-function showInfoModal(title, htmlContent) {
-  const modal = document.getElementById("compareModal");
-  const titleEl = document.getElementById("compareModalTitle");
-  const bodyEl = document.getElementById("compareModalBody");
-  const closeBtn = document.getElementById("compareModalClose");
+    const regTitle = document.querySelector("#registerView .title");
+    if (regTitle) regTitle.textContent = translations[lang].registerTitle;
 
-  if (!modal || !titleEl || !bodyEl || !closeBtn) return;
-
-  // 1. ملء المحتوى
-  titleEl.textContent = title;
-  bodyEl.innerHTML = htmlContent;
-
-  // 2. إظهار النافذة
-  modal.style.display = "flex";
-
-  // 3. ربط زر الإغلاق
-  // (نستخدم نفس تقنية cloneNode لضمان عدم تكرار المستمعين)
-  const newCloseBtn = closeBtn.cloneNode(true);
-  closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
-
-  newCloseBtn.addEventListener("click", () => {
-    modal.style.display = "none";
-  });
+    const regSub = document.querySelector("#registerView .muted");
+    if (regSub) regSub.textContent = translations[lang].registerSubtitle;
 }

@@ -1,89 +1,176 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title data-lang="pageTitle">CashBox Secure — تسجيل الدخول</title>
+// المتغيرات العامة
+const API_URL = "https://cashbox-backend.onrender.com/api/auth";
+let currentLang = "ar"; // اللغة الافتراضية
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+// قاموس الترجمة
+const translations = {
+    ar: {
+        title: "CashBox",
+        loginTitle: "تسجيل الدخول",
+        userLabel: "اسم المستخدم",
+        passLabel: "كلمة المرور",
+        loginBtn: "دخول آمن",
+        noAccount: "ليس لديك حساب؟",
+        createLink: "إنشاء حساب موظف",
+        regTitle: "مستخدم جديد",
+        regSub: "إعداد حساب موظف جديد",
+        regBtn: "إنشاء الحساب",
+        backLink: "العودة لتسجيل الدخول",
+        langBtn: "English",
+        successLogin: "تم الدخول بنجاح! 🔓",
+        successReg: "تم الإنشاء! سجل دخولك الآن ✅",
+        errorFill: "الرجاء ملء جميع الحقول",
+        wait: "لحظة من فضلك..."
+    },
+    en: {
+        title: "CashBox",
+        loginTitle: "User Login",
+        userLabel: "Username",
+        passLabel: "Password",
+        loginBtn: "Secure Login",
+        noAccount: "No account?",
+        createLink: "Create Employee Account",
+        regTitle: "New User",
+        regSub: "Setup new employee account",
+        regBtn: "Create Account",
+        backLink: "Back to Login",
+        langBtn: "العربية",
+        successLogin: "Login Successful! 🔓",
+        successReg: "Created! Login now ✅",
+        errorFill: "Please fill all fields",
+        wait: "Please wait..."
+    }
+};
 
-    <link rel="stylesheet" href="style.css" />
-  </head>
+document.addEventListener("DOMContentLoaded", () => {
+    // العناصر
+    const mainCard = document.getElementById("main-card");
+    const flipToReg = document.getElementById("flip-to-register");
+    const flipToLogin = document.getElementById("flip-to-login");
+    const langBtn = document.getElementById("lang-btn");
+    
+    // --- منطق الحركة (Animation) ---
+    // عند الضغط على "إنشاء حساب"، نقلب البطاقة
+    flipToReg.addEventListener("click", (e) => {
+        e.preventDefault();
+        mainCard.classList.add("flipped");
+        clearMessages();
+    });
 
-  <body>
-    <div class="bg-pattern"></div>
+    // عند الضغط على "العودة"، نعيد البطاقة
+    flipToLogin.addEventListener("click", (e) => {
+        e.preventDefault();
+        mainCard.classList.remove("flipped");
+        clearMessages();
+    });
 
-    <div class="wrap">
-      <section class="hero">
-        <div class="logo">CashBox Secure</div>
-        <h1 data-lang="heroTitle">نظام آمن لتقفيل الصندوق للفنادق</h1>
-        <p data-lang="heroSubtitle">حل سريع، قابل للمراجعة، ويعمل بدون انترنت لتقفيل الصندوق.</p>
-      </section>
+    // --- منطق اللغة (Language) ---
+    langBtn.addEventListener("click", () => {
+        currentLang = currentLang === "ar" ? "en" : "ar";
+        updateLanguage();
+    });
 
-      <main>
-        <div class="card" id="card">
+    function updateLanguage() {
+        const t = translations[currentLang];
+        const html = document.documentElement;
+        
+        // 1. تغيير الاتجاه
+        html.setAttribute("dir", currentLang === "ar" ? "rtl" : "ltr");
+        html.setAttribute("lang", currentLang);
 
-          <div class="lang-switcher">
-            <button id="langArBtn" class="lang-btn active" data-lang-set="ar">ع</button>
-            <button id="langEnBtn" class="lang-btn" data-lang-set="en">EN</button>
-          </div>
+        // 2. تغيير النصوص
+        document.querySelectorAll("[data-lang]").forEach(el => {
+            const key = el.getAttribute("data-lang");
+            if (t[key]) el.textContent = t[key];
+        });
+        
+        // تغيير نص الزر نفسه
+        langBtn.querySelector("span").textContent = t.langBtn;
+    }
 
-          <!-- Login View -->
-          <div id="loginView" class="view-pane">
-            <div class="title" data-lang="loginTitle">مرحباً بعودتك</div>
-            <div class="muted" data-lang="loginSubtitle">سجل الدخول إلى حسابك</div>
+    // --- منطق API (Backend) ---
+    
+    // 1. تسجيل الدخول
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const user = document.getElementById("username").value;
+        const pass = document.getElementById("password").value;
+        const msgBox = document.getElementById("loginMsg");
 
-            <form class="form" id="loginForm">
-              <input id="username" type="text" placeholder="اسم المستخدم" />
-              <div class="password-wrapper">
-                <input id="password" type="password" placeholder="كلمة المرور" />
-              </div>
+        if(!user || !pass) return showMsg(msgBox, translations[currentLang].errorFill, "error");
+        
+        showMsg(msgBox, translations[currentLang].wait, "info");
 
-              <div class="actions">
-                <button class="btn primary" type="submit">تسجيل الدخول</button>
-                <button class="btn secondary" type="button" id="showRegisterBtn">إنشاء حساب</button>
-              </div>
+        try {
+            const res = await fetch(`${API_URL}/login`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username: user, password: pass })
+            });
+            const data = await res.json();
 
-              <div id="loginMsg" class="msg" role="alert"></div>
-            </form>
-          </div>
+            if(res.ok) {
+                localStorage.setItem("token", data.token);
+                localStorage.setItem("username", user);
+                showMsg(msgBox, translations[currentLang].successLogin, "success");
+                setTimeout(() => window.location.href = "dashboard.html", 1500);
+            } else {
+                showMsg(msgBox, data.message || "Error", "error");
+            }
+        } catch (err) {
+            showMsg(msgBox, "Server Error", "error");
+        }
+    });
 
-          <!-- Register View -->
-          <div id="registerView" class="view-pane view-hidden">
-            <div class="title">إنشاء حساب جديد</div>
-            <div class="muted">اختر اسم مستخدم وكلمة مرور</div>
+    // 2. إنشاء حساب
+    document.getElementById("registerForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const user = document.getElementById("regUsername").value;
+        const pass = document.getElementById("regPassword").value;
+        const msgBox = document.getElementById("regMsg");
 
-            <form class="form" id="registerForm">
-              <input id="regUsername" type="text" placeholder="اسم المستخدم" />
-              <div class="password-wrapper">
-                <input id="regPassword" type="password" placeholder="كلمة المرور" />
-              </div>
+        if(!user || !pass) return showMsg(msgBox, translations[currentLang].errorFill, "error");
 
-              <div class="actions">
-                <button class="btn primary" type="submit">إنشاء الحساب</button>
-                <button class="btn secondary" type="button" id="showLoginBtn">العودة لتسجيل الدخول</button>
-              </div>
+        showMsg(msgBox, translations[currentLang].wait, "info");
 
-              <div id="regMsg" class="msg" role="alert"></div>
-            </form>
-          </div>
+        try {
+            const res = await fetch(`${API_URL}/register`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username: user, password: pass })
+            });
+            const data = await res.json();
 
-        </div>
-      </main>
-    </div>
+            if(res.ok) {
+                showMsg(msgBox, translations[currentLang].successReg, "success");
+                setTimeout(() => flipToLogin.click(), 1500); // العودة للوجه الأمامي تلقائياً
+            } else {
+                showMsg(msgBox, data.message || "Error", "error");
+            }
+        } catch (err) {
+            showMsg(msgBox, "Server Error", "error");
+        }
+    });
 
-    <!-- ترتيب السكربتات الصحيح -->
+    function showMsg(el, text, type) {
+        el.textContent = text;
+        el.className = `msg-box ${type}`;
+        el.classList.remove("hidden");
+    }
 
-    <!-- 1) أدوات النظام: decodeToken + showToast -->
-    <script src="utils.js"></script>
+    function clearMessages() {
+        document.querySelectorAll(".msg-box").forEach(el => el.classList.add("hidden"));
+    }
 
-    <!-- 2) الإعدادات وتحديد الـ API URL + دالة apiRequest -->
-    <script src="frontend/config.js"></script>
-
-    <!-- 3) سكربت صفحة تسجيل الدخول فقط -->
-    <script src="login.js"></script>
-
-  </body>
-</html>
+    // Toggle Password Eye
+    document.getElementById("togglePassLogin").addEventListener("click", function() {
+        const input = document.getElementById("password");
+        if(input.type === "password") {
+            input.type = "text";
+            this.classList.remove("fa-eye");
+            this.classList.add("fa-eye-slash");
+        } else {
+            input.type = "password";
+            this.classList.remove("fa-eye-slash");
+            this.classList.add("fa-eye");
+        }
+    });
+});
