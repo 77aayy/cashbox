@@ -5,4 +5,4 @@ node_modules
 .env
 
 # بقايا المشروع القديم (احذف المجلد يدوياً بعد إغلاق أي عملية تستخدمه)
-cashbox-app
+cashbox-appnode_modules/ 
