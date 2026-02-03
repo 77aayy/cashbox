@@ -1,0 +1,153 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  outline: none;
+}
+
+/* وضوح التركيز عند التنقل بالكيبورد (بدون تأثير عند النقر بالماوس) */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid rgba(245, 158, 11, 0.7);
+  outline-offset: 2px;
+}
+
+body {
+  font-family: 'Cairo', sans-serif;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+input.cashbox-input {
+  caret-color: transparent !important;
+}
+
+input[type="number"].cashbox-input::-webkit-outer-spin-button,
+input[type="number"].cashbox-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"].cashbox-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-slate-800/50 rounded;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-slate-500/50 rounded hover:bg-slate-500/70;
+  }
+}
+
+@keyframes program-balance-pulse-glow {
+  0%, 100% {
+    box-shadow: inset 0 0 0 0 rgba(245, 158, 11, 0);
+    background-color: transparent;
+  }
+  15%, 85% {
+    box-shadow: inset 0 0 20px 4px rgba(245, 158, 11, 0.25);
+    background-color: rgba(245, 158, 11, 0.08);
+  }
+  50% {
+    box-shadow: inset 0 0 24px 6px rgba(245, 158, 11, 0.35);
+    background-color: rgba(245, 158, 11, 0.12);
+  }
+}
+
+.program-balance-pulse-cell {
+  animation: program-balance-pulse-glow 3s ease-in-out 1;
+  border-radius: 0.5rem;
+}
+
+@keyframes expense-description-pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+    background-color: rgba(30, 41, 59, 0.8);
+  }
+  15%, 85% {
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.4);
+    background-color: rgba(245, 158, 11, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.5);
+    background-color: rgba(245, 158, 11, 0.15);
+  }
+}
+
+.expense-description-pulse {
+  animation: expense-description-pulse-glow 3s ease-in-out 1;
+}
+
+/* نبض أحمر خفيف عند النقر على خانة مغلقة */
+@keyframes locked-cell-pulse-glow {
+  0%, 100% {
+    box-shadow: inset 0 0 0 0 rgba(239, 68, 68, 0);
+    background-color: transparent;
+  }
+  50% {
+    box-shadow: inset 0 0 12px 2px rgba(239, 68, 68, 0.2);
+    background-color: rgba(239, 68, 68, 0.06);
+  }
+}
+
+.locked-cell-pulse {
+  animation: locked-cell-pulse-glow 1.2s ease-in-out 1;
+  border-radius: 0.5rem;
+}
+
+/* النقر يصل للـ wrapper وليس للـ input المعطّل */
+.locked-field-wrapper input {
+  pointer-events: none;
+}
+
+/* زر إغلاق الشفت — تمييز بصري وأنيميشن */
+@keyframes close-shift-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.25), 0 0 40px rgba(245, 158, 11, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(245, 158, 11, 0.35), 0 0 56px rgba(245, 158, 11, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  }
+}
+
+@keyframes close-shift-shine {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.btn-close-shift {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.25s ease, background 0.2s ease;
+}
+.btn-close-shift:not(:disabled):hover {
+  transform: scale(1.03);
+  box-shadow: 0 0 32px rgba(245, 158, 11, 0.4), 0 0 64px rgba(245, 158, 11, 0.15);
+}
+.btn-close-shift:not(:disabled):active {
+  transform: scale(0.98);
+}
+.btn-close-shift-ready {
+  animation: close-shift-glow 2.5s ease-in-out infinite;
+}
+.btn-close-shift .btn-close-shift-icon {
+  transition: transform 0.25s ease;
+}
+.btn-close-shift:not(:disabled):hover .btn-close-shift-icon {
+  transform: scale(1.08);
+}

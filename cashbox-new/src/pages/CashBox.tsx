@@ -1,0 +1,2034 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
+import { getRows, getRowById, addRow, updateRow, closeRow, getClosedForPrint, deleteRow, deleteAllClosedRows } from '../lib/storage'
+import { parseBankTransactionsExcel } from '../lib/excelParser'
+import { computeBankVariance, computeCashVariance, computeVariance, formatCurrency, formatDateTime, filterByPreset, getGreeting, toLatinDigits } from '../lib/utils'
+import { ClosureRowComp } from '../components/ClosureRow'
+import { Calculator, type TransferField } from '../components/Calculator'
+import { CashCalculator } from '../components/CashCalculator'
+import { Toast } from '../components/Toast'
+import type { ClosureRow, FilterPreset } from '../types'
+
+const ROWS_PER_PAGE = 5
+const UNDO_SECONDS = 10
+const ADMIN_CODE = 'ayman5255'
+
+const FILTERS: { id: FilterPreset; label: string }[] = [
+  { id: 'today', label: 'اليوم' },
+  { id: 'yesterday', label: 'أمس' },
+  { id: 'lastWeek', label: 'الأسبوع الماضي' },
+]
+
+interface CashBoxProps {
+  name: string
+  onExit: () => void
+}
+
+export function CashBox({ name, onExit }: CashBoxProps) {
+  const [rows, setRows] = useState<ClosureRow[]>([])
+  const [filter, setFilter] = useState<FilterPreset>('today')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [liveNow, setLiveNow] = useState(() => new Date())
+  const [closingRowId, setClosingRowId] = useState<string | null>(null)
+  const [closingEndsAt, setClosingEndsAt] = useState<number | null>(null)
+  const [closingSecondsLeft, setClosingSecondsLeft] = useState(0)
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'warning' | 'info'; autoHideMs?: number } | null>(null)
+  /** تأكيد الترحيل عندما يوجد رقم في الخانة (كاش أو مدى أو فيزا أو تحويل بنكي) */
+  const [transferConfirm, setTransferConfirm] = useState<{ amount: number; currentValue: number; field: TransferField } | null>(null)
+  /** صفوف محددة للطباعة */
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set())
+  /** حذف صف: خطوة التأكيد ثم إدخال كود الأدمن */
+  const [deleteConfirm, setDeleteConfirm] = useState<{ rowId: string; step: 'confirm' | 'code' } | null>(null)
+  const [deleteAllClosedConfirm, setDeleteAllClosedConfirm] = useState<{ step: 'confirm' | 'code' } | null>(null)
+  /** حذف بند مرحّل من نافذة المصروفات: تأكيد + كود الأدمن */
+  const [deleteCarriedConfirm, setDeleteCarriedConfirm] = useState<{ rowId: string; itemIndex: number; step: 'confirm' | 'code' } | null>(null)
+  const [adminCodeInput, setAdminCodeInput] = useState('')
+  const [showAdminCode, setShowAdminCode] = useState(false)
+  /** نافذة تصنيف المصروفات: صف + قائمة (مبلغ كنص أثناء التحرير، وصف) + عدد البنود المرحلة (مقفولة) */
+  const [expenseModal, setExpenseModal] = useState<{
+    rowId: string
+    items: { amount: string; description: string }[]
+    readOnly?: boolean
+    carriedCount?: number
+  } | null>(null)
+  /** نبض حقل الوصف عند الحفظ دون إدخال وصف (index البند) */
+  const [pulseExpenseDescriptionIndex, setPulseExpenseDescriptionIndex] = useState<number | null>(null)
+  /** تأكيد الإغلاق عند وجود انحراف: انحراف الكاش/البنك — نعم يبدأ العد، لا يكمل التعديل */
+  const [closeConfirmVariance, setCloseConfirmVariance] = useState<{
+    rowId: string
+    cashVar: number
+    bankVar: number
+  } | null>(null)
+  /** يُحدَّث عند انتهاء مهلة الإغلاق لتصفير الحاسبتين (سجل العمليات + حاسبة الكاش) للتجهيز لشفت جديد */
+  const [calculatorsResetKey, setCalculatorsResetKey] = useState(0)
+  const debounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  /** أحدث حالة لكل صف لاستخدامها عند انتهاء الـ debounce حتى لا تُفقد حقول أخرى عند Tab السريع */
+  const rowDataRef = useRef<Record<string, ClosureRow>>({})
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  /** تاريخ بداية الفترة للاستيراد: يُعيّن قبل فتح منتقي الملف (إما آخر تقفيلة أو تاريخ يختاره المستخدم) */
+  const uploadAfterDateRef = useRef<Date | null>(null)
+  /** نافذة: اعتماد تاريخ ووقت آخر تقفيلة؟ نعم → رفع مباشر، لا → اختيار تاريخ ووقت بديل */
+  const [uploadAskModal, setUploadAskModal] = useState(false)
+  /** نافذة اختيار تاريخ ووقت بديل لبداية الفترة (عند "لا") */
+  const [uploadCustomDateModal, setUploadCustomDateModal] = useState<{ date: string; time: string } | null>(null)
+  /** آخر قيمة مكتوبة في حقول المبلغ بنافذة المصروفات (لتفادي تثبيت القيمة القديمة عند إعادة الرسم) */
+  const expenseAmountRef = useRef<Record<number, string>>({})
+  /** تم التركيز لهذه النافذة (نركّز مرة واحدة عند الفتح فقط في أول حقل وصف) */
+  const expenseModalFocusedRowIdRef = useRef<string | null>(null)
+  /** تفاصيل آخر استيراد إكسل (عمليات مدى/فيزا/ماستر/تحويل) لعرضها عند النقر على المبلغ */
+  const [lastExcelDetails, setLastExcelDetails] = useState<ExcelDetails | null>(null)
+  /** قائمة أسماء الموظفين من آخر استيراد (عند "أكثر من موظف") لعرضها عند النقر */
+  const [lastExcelEmployeeNamesList, setLastExcelEmployeeNamesList] = useState<string[]>([])
+  /** نافذة تفاصيل عمليات طريقة دفع معيّنة (مدى، فيزا، ...) */
+  const [excelDetailModal, setExcelDetailModal] = useState<keyof ExcelDetails | null>(null)
+  /** نافذة أسماء الموظفين (عند النقر على "أكثر من موظف") */
+  const [showEmployeeNamesModal, setShowEmployeeNamesModal] = useState(false)
+  /** نافذة شرح سبب انحراف الكاش أو البنك (نوع + الصف) */
+  const [varianceExplanationModal, setVarianceExplanationModal] = useState<{ type: 'cash' | 'bank'; row: ClosureRow } | null>(null)
+
+  const loadRows = useCallback(() => {
+    const newRows = getRows()
+    setRows(newRows)
+    newRows.forEach((r) => {
+      rowDataRef.current[r.id] = r
+    })
+  }, [])
+
+  useEffect(() => {
+    loadRows()
+    const list = getRows()
+    if (list.length === 0) {
+      addRow(name)
+      loadRows()
+    }
+    return () => {
+      Object.values(debounceRef.current).forEach(clearTimeout)
+      debounceRef.current = {}
+    }
+  }, [name, loadRows])
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      const now = Date.now()
+      setLiveNow(new Date(now))
+      if (closingEndsAt !== null) {
+        setClosingSecondsLeft(Math.max(0, Math.ceil((closingEndsAt - now) / 1000)))
+      }
+    }, 1000)
+    return () => clearInterval(t)
+  }, [closingEndsAt])
+
+  useEffect(() => {
+    if (closingRowId === null || closingSecondsLeft > 0) return
+    const rowId = closingRowId
+    const fromState = rows.find((x) => x.id === rowId)
+    if (!fromState || fromState.status === 'closed') {
+      setClosingRowId(null)
+      setClosingEndsAt(null)
+      return
+    }
+    setClosingRowId(null)
+    setClosingEndsAt(null)
+    // تفريغ أي تحديث مؤجل لهذا الصف قبل القراءة من الـ storage
+    const pending = debounceRef.current[rowId]
+    if (pending) {
+      clearTimeout(pending)
+      delete debounceRef.current[rowId]
+      updateRow(rowId, fromState)
+    }
+    // دمج بيانات الـ state مع الـ storage حتى لا تُفقد أي مبالغ
+    const fromStorage = getRowById(rowId)
+    const merged = fromStorage
+      ? { ...fromStorage, ...fromState, id: rowId, status: 'active' as const }
+      : fromState
+    const v = computeVariance(merged)
+    closeRow(rowId, { ...merged, variance: v })
+    // ترحيل المصروفات = الفرق فقط (مصروفات − تعويض). لو تعويض 200 ومصروفات 500 تُنقل 300 فقط. لو تعويض = مصروفات لا يُنقل مبلغ.
+    const closedExpenses = merged.expenses ?? 0
+    const closedCompensation = merged.expenseCompensation ?? 0
+    const netCarried = Math.max(0, closedExpenses - closedCompensation)
+    const closedItems = merged.expenseItems ?? []
+    const hasCompensation = closedCompensation > 0
+    const carriedItems = hasCompensation
+      ? (netCarried > 0 ? [{ amount: netCarried, description: 'مرحّل (صافي بعد التعويض)' }] : [])
+      : closedItems.map((it) => ({ amount: it.amount, description: it.description || '' }))
+    addRow(name, {
+      expenses: netCarried,
+      expenseItems: carriedItems,
+      carriedExpenseCount: carriedItems.length,
+    })
+    loadRows()
+    setToast({ msg: 'تم إغلاق الشفت وإضافة صف جديد', type: 'success' })
+    setCalculatorsResetKey((k) => k + 1)
+  }, [closingSecondsLeft, closingRowId, rows, name, loadRows])
+
+  const displayRows = useMemo(() => {
+    const active = rows.filter((r) => r.status !== 'closed').sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    const closed = filterByPreset(
+      rows.filter((r) => r.status === 'closed'),
+      filter
+    ).sort((a, b) => new Date((b.closedAt ?? '').toString()).getTime() - new Date((a.closedAt ?? '').toString()).getTime())
+    // الصف النشط يظهر فقط عند فلتر "اليوم"
+    if (filter === 'today') return [...active, ...closed]
+    return closed
+  }, [rows, filter])
+
+  const totalPages = Math.max(1, Math.ceil(displayRows.length / ROWS_PER_PAGE))
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(1)
+  }, [currentPage, totalPages])
+  const visibleRows = useMemo(
+    () =>
+      displayRows.slice(
+        (currentPage - 1) * ROWS_PER_PAGE,
+        currentPage * ROWS_PER_PAGE
+      ),
+    [displayRows, currentPage]
+  )
+  const firstActiveId = useMemo(
+    () => displayRows.find((r) => r.status !== 'closed')?.id ?? null,
+    [displayRows]
+  )
+
+  /** أحدث صف مغلق (تاريخ إغلاقه = بداية فترة الصف النشط) */
+  const lastClosedRow = useMemo(() => {
+    const closed = rows.filter((r) => r.status === 'closed' && r.closedAt)
+    if (closed.length === 0) return null
+    return closed.sort((a, b) => new Date((b.closedAt ?? '').toString()).getTime() - new Date((a.closedAt ?? '').toString()).getTime())[0] ?? null
+  }, [rows])
+
+  const firstActiveRow = useMemo(() => rows.find((r) => r.status !== 'closed') ?? null, [rows])
+
+  const canCloseShift = useMemo(() => {
+    if (!firstActiveRow) return false
+    const cash = (firstActiveRow.cash as number) ?? 0
+    const programCash = (firstActiveRow.programBalanceCash as number) ?? 0
+    const programBank = (firstActiveRow.programBalanceBank as number) ?? 0
+    return cash > 0 && programCash > 0 && programBank > 0
+  }, [firstActiveRow])
+
+  const handleExcelUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      e.target.value = ''
+      if (!file) return
+      const active = firstActiveRow
+      if (!active) {
+        setToast({ msg: 'لا يوجد صف نشط لملء البيانات', type: 'warning' })
+        return
+      }
+      const afterDate = uploadAfterDateRef.current
+      uploadAfterDateRef.current = null
+      if (!afterDate) {
+        setToast({ msg: 'يجب وجود صف مغلق أولاً أو اختيار تاريخ ووقت بداية الفترة', type: 'warning' })
+        return
+      }
+      let buffer: ArrayBuffer
+      try {
+        buffer = await file.arrayBuffer()
+      } catch {
+        setToast({ msg: 'تعذر قراءة الملف', type: 'error' })
+        return
+      }
+      const { sums, counts, details, employeeName: excelEmployeeName, employeeNamesList, error } = parseBankTransactionsExcel(buffer, afterDate)
+      if (error) {
+        setToast({ msg: error, type: 'error' })
+        return
+      }
+      setLastExcelDetails(details)
+      setLastExcelEmployeeNamesList(employeeNamesList ?? [])
+      const pending = debounceRef.current[active.id]
+      if (pending) {
+        clearTimeout(pending)
+        delete debounceRef.current[active.id]
+        updateRow(active.id, rowDataRef.current[active.id] ?? active)
+      }
+      const current = (rowDataRef.current[active.id] ?? active) as ClosureRow
+      const total = sums.cash + sums.mada + sums.visa + sums.mastercard + sums.bankTransfer
+      const filled = {
+        cash: sums.cash,
+        mada: sums.mada,
+        visa: sums.visa,
+        mastercard: sums.mastercard,
+        bankTransfer: sums.bankTransfer,
+      }
+      const employeeName = (excelEmployeeName && excelEmployeeName.trim() !== '') ? excelEmployeeName.trim() : current.employeeName
+      const nextRow = { ...current, ...filled, employeeName, variance: computeVariance({ ...current, ...filled, employeeName }) }
+      updateRow(active.id, nextRow)
+      rowDataRef.current[active.id] = nextRow
+      setRows((prev) => prev.map((r) => (r.id === active.id ? nextRow : r)))
+      loadRows()
+      const parts: string[] = []
+      if (counts.mada > 0) parts.push(`${counts.mada} مدى (${formatCurrency(sums.mada)})`)
+      if (counts.visa > 0) parts.push(`${counts.visa} فيزا (${formatCurrency(sums.visa)})`)
+      if (counts.mastercard > 0) parts.push(`${counts.mastercard} ماستر (${formatCurrency(sums.mastercard)})`)
+      if (counts.bankTransfer > 0) parts.push(`${counts.bankTransfer} تحويل بنكي (${formatCurrency(sums.bankTransfer)})`)
+      if (counts.cash > 0) parts.push(`${counts.cash} كاش (${formatCurrency(sums.cash)})`)
+      const detail = parts.length > 0 ? parts.join(' — ') + ` — المجموع: ${formatCurrency(total)}` : ''
+      setToast({
+        msg: total > 0 ? `تم استيراد عمليات بعد وقت البداية. ${detail}` : 'لم يُعثر على إدخالات بعد تاريخ/وقت البداية',
+        type: total > 0 ? 'success' : 'info',
+      })
+    },
+    [firstActiveRow, loadRows]
+  )
+
+  const handleUploadFilesClick = useCallback(() => {
+    if (lastClosedRow?.closedAt) {
+      setUploadAskModal(true)
+    } else {
+      const d = new Date()
+      setUploadCustomDateModal({
+        date: d.toISOString().slice(0, 10),
+        time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+      })
+    }
+  }, [lastClosedRow])
+
+  const handleUploadUseLastClosure = useCallback(() => {
+    if (!lastClosedRow?.closedAt) return
+    uploadAfterDateRef.current = new Date(lastClosedRow.closedAt)
+    setUploadAskModal(false)
+    fileInputRef.current?.click()
+  }, [lastClosedRow])
+
+  const handleUploadPickCustomDate = useCallback(() => {
+    if (!lastClosedRow?.closedAt) return
+    const d = new Date(lastClosedRow.closedAt)
+    const date = d.toISOString().slice(0, 10)
+    const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    setUploadAskModal(false)
+    setUploadCustomDateModal({ date, time })
+  }, [lastClosedRow])
+
+  const handleUploadCustomDateConfirm = useCallback(() => {
+    if (!uploadCustomDateModal) return
+    const after = new Date(`${uploadCustomDateModal.date}T${uploadCustomDateModal.time}`)
+    uploadAfterDateRef.current = after
+    setUploadCustomDateModal(null)
+    fileInputRef.current?.click()
+  }, [uploadCustomDateModal])
+
+  const openExpenseDetails = useCallback((rowId: string) => {
+    if (expenseModal?.rowId === rowId) return
+    expenseAmountRef.current = {}
+    setPulseExpenseDescriptionIndex(null)
+    const row = rows.find((r) => r.id === rowId) ?? rowDataRef.current[rowId]
+    const currentExpenses = (row?.expenses as number) ?? 0
+    let items: { amount: string; description: string }[] = row?.expenseItems?.length
+      ? row.expenseItems.map((it) => ({ amount: String(it.amount), description: it.description || '' }))
+      : [{ amount: currentExpenses ? String(currentExpenses) : '', description: '' }]
+    const isNonEmpty = (it: { amount: string; description: string }) =>
+      (Number(it.amount) || 0) !== 0 || String(it.description || '').trim() !== ''
+    const originalCarriedCount = (row?.carriedExpenseCount ?? 0) as number
+    const carriedNonEmptyCount = items.slice(0, originalCarriedCount).filter(isNonEmpty).length
+    items = items.filter(isNonEmpty)
+    let carriedCount = carriedNonEmptyCount
+    const readOnly = row?.status === 'closed'
+    if (!readOnly && items.length > 0) {
+      const last = items[items.length - 1]!
+      if (String(last.amount || '').trim() !== '' || String(last.description || '').trim() !== '') {
+        const sumItems = items.reduce((s, it) => s + (Number(it.amount) || 0), 0)
+        const diff = currentExpenses - sumItems
+        const newRowAmount = diff > 0 ? String(diff) : ''
+        items = [...items, { amount: newRowAmount, description: '' }]
+      }
+    }
+    if (!readOnly && items.length === 0) {
+      items = [{ amount: currentExpenses ? String(currentExpenses) : '', description: '' }]
+    }
+    setExpenseModal({ rowId, items, readOnly, carriedCount })
+  }, [rows, expenseModal?.rowId])
+
+  /** عند إغلاق نافذة المصروفات نصحّح العلم حتى يُعاد التركيز عند الفتح التالي */
+  useEffect(() => {
+    if (!expenseModal) expenseModalFocusedRowIdRef.current = null
+  }, [expenseModal])
+
+  /** إيقاف نبض حقل الوصف بعد 3 ثوانٍ */
+  useEffect(() => {
+    if (pulseExpenseDescriptionIndex === null) return
+    const t = setTimeout(() => setPulseExpenseDescriptionIndex(null), 3000)
+    return () => clearTimeout(t)
+  }, [pulseExpenseDescriptionIndex])
+
+  /** مسح المصروف وتصنيفه فقط عند النقر على الحقل وهو فيه قيمة — إبقاء البنود المرحلة من الشفت السابق، مسح البنود الحالية فقط */
+  const clearExpensesAndOpenModal = useCallback((rowId: string) => {
+    const pending = debounceRef.current[rowId]
+    if (pending) {
+      clearTimeout(pending)
+      delete debounceRef.current[rowId]
+    }
+    const row = rows.find((r) => r.id === rowId)
+    const carriedCount = (row?.carriedExpenseCount ?? 0) as number
+    const keptItems = (row?.expenseItems ?? []).slice(0, carriedCount)
+    const newExpenses = keptItems.reduce((s, it) => s + it.amount, 0)
+    updateRow(rowId, { expenses: newExpenses, expenseItems: keptItems })
+    if (row) {
+      const next = { ...row, expenses: newExpenses, expenseItems: keptItems, variance: computeVariance({ ...row, expenses: newExpenses, expenseItems: keptItems }) }
+      rowDataRef.current[rowId] = next
+      setRows((prev) => prev.map((x) => (x.id !== rowId ? x : next)))
+    }
+    loadRows()
+    expenseAmountRef.current = {}
+  }, [rows, loadRows])
+
+  const updateExpenseModalItem = useCallback((index: number, field: 'amount' | 'description', value: number | string) => {
+    setExpenseModal((m) =>
+      m
+        ? {
+            ...m,
+            items: m.items.map((it, i) =>
+              i === index ? { ...it, [field]: field === 'amount' ? String(value) : String(value) } : it
+            ),
+          }
+        : null
+    )
+  }, [])
+
+  const addExpenseModalRow = useCallback(() => {
+    expenseAmountRef.current = {}
+    setExpenseModal((m) => (m ? { ...m, items: [...m.items, { amount: '', description: '' }] } : null))
+  }, [])
+
+  const removeExpenseModalRow = useCallback((index: number) => {
+    setExpenseModal((m) => {
+      if (!m) return m
+      const carried = m.carriedCount ?? 0
+      if (index < carried) return m
+      if (m.items.length <= 1) return m
+      expenseAmountRef.current = {}
+      return { ...m, items: m.items.filter((_, i) => i !== index) }
+    })
+  }, [])
+
+  const requestDeleteCarriedItem = useCallback((rowId: string, itemIndex: number) => {
+    setAdminCodeInput('')
+    setDeleteCarriedConfirm({ rowId, itemIndex, step: 'confirm' })
+  }, [])
+
+  const confirmDeleteCarriedItem = useCallback(() => {
+    if (!deleteCarriedConfirm) return
+    setDeleteCarriedConfirm((d) => (d ? { ...d, step: 'code' } : null))
+  }, [deleteCarriedConfirm])
+
+  const submitDeleteCarriedWithCode = useCallback(() => {
+    if (!deleteCarriedConfirm) return
+    if (adminCodeInput.trim() !== ADMIN_CODE) {
+      setToast({ msg: 'كود الأدمن غير صحيح', type: 'error' })
+      return
+    }
+    const { rowId, itemIndex } = deleteCarriedConfirm
+    const row = rows.find((r) => r.id === rowId) ?? rowDataRef.current[rowId]
+    if (!row) {
+      setDeleteCarriedConfirm(null)
+      setAdminCodeInput('')
+      return
+    }
+    const items = (row.expenseItems ?? []).slice()
+    const carriedCount = row.carriedExpenseCount ?? 0
+    if (itemIndex >= items.length || itemIndex >= carriedCount) {
+      setDeleteCarriedConfirm(null)
+      setAdminCodeInput('')
+      return
+    }
+    items.splice(itemIndex, 1)
+    const newCarriedCount = Math.max(0, carriedCount - 1)
+    const newExpenses = items.reduce((s, it) => s + it.amount, 0)
+    updateRow(rowId, { expenseItems: items, expenses: newExpenses, carriedExpenseCount: newCarriedCount })
+    const updatedRow = { ...row, expenseItems: items, expenses: newExpenses, carriedExpenseCount: newCarriedCount }
+    rowDataRef.current[rowId] = updatedRow
+    setRows((prev) => prev.map((r) => (r.id === rowId ? updatedRow : r)))
+    setExpenseModal((m) => {
+      if (!m || m.rowId !== rowId) return m
+      const newItems = m.items.filter((_, i) => i !== itemIndex)
+      return { ...m, items: newItems, carriedCount: newCarriedCount }
+    })
+    expenseAmountRef.current = {}
+    loadRows()
+    setDeleteCarriedConfirm(null)
+    setAdminCodeInput('')
+    setShowAdminCode(false)
+    setToast({ msg: 'تم حذف البند المرحّل', type: 'success' })
+  }, [deleteCarriedConfirm, adminCodeInput, rows, loadRows, updateRow])
+
+  const saveExpenseModal = useCallback(() => {
+    if (!expenseModal) return
+    const rowId = expenseModal.rowId
+    const carriedCount = expenseModal.carriedCount ?? 0
+    const items = expenseModal.items.map((it, index) => {
+      const rawAmount = expenseAmountRef.current[index] !== undefined ? expenseAmountRef.current[index] : String(it.amount ?? '')
+      const amount = Number(String(rawAmount).replace(/,/g, '')) || 0
+      return { amount, description: String(it.description || '').trim(), index }
+    })
+    const missingDesc = items.find((it) => it.index >= carriedCount && it.amount > 0 && !it.description)
+    if (missingDesc) {
+      setToast({ msg: 'يجب إدخال وصف لكل بند فيه مبلغ', type: 'warning' })
+      setPulseExpenseDescriptionIndex(missingDesc.index)
+      return
+    }
+    const finalItems = items.map(({ amount, description }) => ({ amount, description }))
+    const total = finalItems.reduce((sum, it) => sum + it.amount, 0)
+    updateRow(rowId, { expenseItems: finalItems, expenses: total })
+    setExpenseModal(null)
+    loadRows()
+    // بعد إغلاق النافذة: تخطي رصيد البرنامج كاش [4] ونقل التركيز لأول حقل مفعّل بعده (مدى فما بعد)
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        const inputs = document.querySelectorAll<HTMLInputElement>(
+          `tr[data-row-id="${rowId}"] input.cashbox-input`
+        )
+        let target = inputs[5] ?? inputs[0]
+        for (let i = 5; i < inputs.length; i++) {
+          if (!inputs[i].disabled) {
+            target = inputs[i]
+            break
+          }
+        }
+        target?.focus()
+      }, 0)
+    })
+  }, [expenseModal, loadRows, updateRow])
+
+  const handleLockedFieldClick = useCallback(() => {
+    setToast({ msg: 'يجب إدخال رصيد البرنامج كاش أولاً', type: 'warning' })
+  }, [])
+
+  const handleExpenseCompensationExceeded = useCallback((maxAllowed: number) => {
+    setToast({
+      msg: `تعويض المصروفات يجب ألا يتخطى مبلغ المصروفات (المصروفات: ${formatCurrency(maxAllowed)})`,
+      type: 'warning',
+    })
+  }, [])
+
+  const handleUpdate = useCallback(
+    (id: string, field: keyof ClosureRow, value: number | string) => {
+      const r = rows.find((x) => x.id === id)
+      if (!r || r.status === 'closed') return
+      const patch: Partial<ClosureRow> = { [field]: value }
+      if (field === 'expenses' && typeof value === 'number') {
+        const comp = (r.expenseCompensation as number) ?? 0
+        if (value < comp) patch.expenseCompensation = value
+      }
+      const numField = NUM_FIELDS.includes(field as (typeof NUM_FIELDS)[number])
+      if (numField) {
+        const next = { ...r, ...patch }
+        patch.variance = computeVariance(next)
+      }
+      const prev = debounceRef.current[id]
+      if (prev) clearTimeout(prev)
+      debounceRef.current[id] = setTimeout(() => {
+        const fullRow = rowDataRef.current[id]
+        if (fullRow) updateRow(id, fullRow)
+        loadRows()
+      }, 400)
+      flushSync(() => {
+        setRows((prev) => {
+          const next = prev.map((x) => (x.id !== id ? x : { ...x, ...patch }))
+          const updated = next.find((x) => x.id === id)
+          if (updated) rowDataRef.current[id] = updated
+          return next
+        })
+      })
+    },
+    [rows, loadRows]
+  )
+
+  const handleCloseShift = useCallback((rowId: string) => {
+    const r = rows.find((x) => x.id === rowId)
+    if (!r || r.status !== 'active') return
+    const cashVar = computeCashVariance(r)
+    const bankVar = computeBankVariance(r)
+    if (cashVar !== 0 || bankVar !== 0) {
+      setCloseConfirmVariance({ rowId, cashVar, bankVar })
+      return
+    }
+    setToast({ msg: 'الصندوق مظبوط — تم عمل جيد ✓', type: 'success' })
+    setClosingRowId(rowId)
+    setClosingEndsAt(Date.now() + UNDO_SECONDS * 1000)
+    setClosingSecondsLeft(UNDO_SECONDS)
+  }, [rows])
+
+  const confirmCloseWithVariance = useCallback(() => {
+    if (!closeConfirmVariance) return
+    const { rowId } = closeConfirmVariance
+    setCloseConfirmVariance(null)
+    setClosingRowId(rowId)
+    setClosingEndsAt(Date.now() + UNDO_SECONDS * 1000)
+    setClosingSecondsLeft(UNDO_SECONDS)
+  }, [closeConfirmVariance])
+
+  const cancelCloseWithVariance = useCallback(() => {
+    setCloseConfirmVariance(null)
+  }, [])
+
+  const handleUndoClose = useCallback(() => {
+    setClosingRowId(null)
+    setClosingEndsAt(null)
+    setClosingSecondsLeft(0)
+    setToast({ msg: 'تم التراجع — يمكنك تعديل الصف', type: 'info' })
+  }, [])
+
+  const printRows = useCallback(
+    (list: ClosureRow[], title: string) => {
+      if (list.length === 0) {
+        setToast({ msg: 'لا توجد تقفيلات للطباعة', type: 'warning' })
+        return
+      }
+      const win = window.open('', '_blank', 'width=800,height=900')
+      if (!win) {
+        setToast({ msg: 'السماح بالنوافذ المنبثقة للطباعة', type: 'warning' })
+        return
+      }
+      const pagesHtml = list
+        .map((r, idx) => {
+          const bankTotal = r.mada + r.visa + r.mastercard
+          const bankVariance = computeBankVariance(r)
+          const cashVariance = computeCashVariance(r)
+          const expenses = (r as { expenses?: number }).expenses ?? 0
+          const expenseComp = (r as { expenseCompensation?: number }).expenseCompensation ?? 0
+          const sentToTreasury = (r as { sentToTreasury?: number }).sentToTreasury ?? 0
+          const items = (r as { expenseItems?: { amount: number; description: string }[] }).expenseItems ?? []
+          const cashVarClass = cashVariance > 0 ? 'variance pos' : cashVariance < 0 ? 'variance neg' : 'variance'
+          const bankVarClass = bankVariance > 0 ? 'variance pos' : bankVariance < 0 ? 'variance neg' : 'variance'
+          const expenseDetails =
+            items.length > 0
+              ? `<div class="block expenses-detail">
+                  <div class="block-title">تفاصيل المصروفات</div>
+                  <div class="block-body">${items.map((it) => `<div class="expense-item">${formatCurrency(it.amount)} — ${(it.description || '—').replace(/</g, '&lt;')}</div>`).join('')}</div>
+                </div>`
+              : ''
+          const notesHtml = (r.notes || '').trim() ? `<div class="block notes-block"><div class="block-title">ملاحظات</div><div class="block-body">${(r.notes || '').replace(/</g, '&lt;')}</div></div>` : ''
+          const pageBreakStyle = (idx > 0 ? 'page-break-before: always;' : '') + (idx < list.length - 1 ? 'page-break-after: always;' : '')
+          return `
+            <div class="page" ${pageBreakStyle ? `style="${pageBreakStyle}"` : ''}>
+              <header class="page-header">
+                <h1 class="page-title">تقرير تقفيلة</h1>
+                <p class="page-sub">${r.employeeName}</p>
+                <p class="page-time">${r.closedAt ? formatDateTime(r.closedAt) : '—'}</p>
+              </header>
+              <div class="grid">
+                <div class="block cash-block">
+                  <div class="block-title">الكاش</div>
+                  <div class="block-body">
+                    <div class="row"><span class="label">كاش</span><span class="val">${formatCurrency(r.cash)}</span></div>
+                    <div class="row"><span class="label">مرسل للخزنة</span><span class="val">${formatCurrency(sentToTreasury)}</span></div>
+                    <div class="row"><span class="label">المصروفات</span><span class="val">${formatCurrency(expenses)}</span></div>
+                    <div class="row"><span class="label">تعويض مصروفات</span><span class="val">${formatCurrency(expenseComp)}</span></div>
+                    <div class="row"><span class="label">رصيد البرنامج كاش</span><span class="val">${formatCurrency(r.programBalanceCash)}</span></div>
+                    <div class="row highlight variance-row"><span class="label">انحراف الكاش</span><span class="val ${cashVarClass}">${formatCurrency(cashVariance)}</span></div>
+                  </div>
+                </div>
+                <div class="block bank-block">
+                  <div class="block-title">البنك</div>
+                  <div class="block-body">
+                    <div class="row"><span class="label">مدى</span><span class="val">${formatCurrency(r.mada)}</span></div>
+                    <div class="row"><span class="label">فيزا</span><span class="val">${formatCurrency(r.visa)}</span></div>
+                    <div class="row"><span class="label">ماستر كارد</span><span class="val">${formatCurrency(r.mastercard)}</span></div>
+                    <div class="row"><span class="label">تحويل بنكي</span><span class="val">${formatCurrency(r.bankTransfer)}</span></div>
+                    <div class="row"><span class="label">إجمالي مدى+فيزا+ماستر</span><span class="val total">${formatCurrency(bankTotal)}</span></div>
+                    <div class="row"><span class="label">اجمالى الموازنة</span><span class="val">${formatCurrency(r.programBalanceBank)}</span></div>
+                    <div class="row highlight variance-row"><span class="label">انحراف البنك</span><span class="val ${bankVarClass}">${formatCurrency(bankVariance)}</span></div>
+                  </div>
+                </div>
+              </div>
+              ${expenseDetails}
+              ${notesHtml}
+              <footer class="page-footer">تاريخ الطباعة: ${formatDateTime(new Date())} ${list.length > 1 ? ` — تقفيلة ${idx + 1} من ${list.length}` : ''}</footer>
+            </div>`
+        })
+        .join('')
+      win.document.write(`
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+          <head>
+            <meta charset="utf-8">
+            <title>${title}</title>
+            <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+            <style>
+              * { box-sizing: border-box; margin: 0; padding: 0; }
+              @page { size: A4 portrait; margin: 14mm; }
+              html, body {
+                font-family: 'Cairo', sans-serif;
+                background: #fff;
+                color: #1e293b;
+                font-size: 15px;
+                line-height: 1.4;
+                padding: 12px;
+                margin: 0;
+                height: auto;
+              }
+              @media print {
+                html, body {
+                  padding: 0 !important;
+                  margin: 0 !important;
+                  height: auto !important;
+                  min-height: unset !important;
+                  overflow: visible !important;
+                  background: #fff;
+                }
+                .page {
+                  box-shadow: none !important;
+                  margin: 0 auto !important;
+                  min-height: 0 !important;
+                  height: auto !important;
+                  page-break-inside: avoid;
+                }
+                .page:last-child { page-break-after: avoid !important; }
+              }
+              .page {
+                width: 100%;
+                max-width: 210mm;
+                margin: 0 auto 20px;
+                padding: 0 10px 16px;
+                background: #fff;
+                box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+              }
+              .page-header {
+                text-align: center;
+                padding: 20px 0 18px;
+                border-bottom: 2px solid #0f172a;
+                margin-bottom: 18px;
+              }
+              .page-title {
+                font-size: 1.5rem;
+                font-weight: 700;
+                color: #0f172a;
+                margin-bottom: 4px;
+              }
+              .page-sub {
+                font-size: 1.1rem;
+                font-weight: 600;
+                color: #334155;
+                margin-bottom: 2px;
+              }
+              .page-time {
+                font-size: 0.9rem;
+                color: #64748b;
+              }
+              .grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 16px;
+                margin-bottom: 16px;
+              }
+              .block {
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                overflow: hidden;
+              }
+              .block-title {
+                background: #f1f5f9;
+                padding: 10px 12px;
+                font-weight: 700;
+                font-size: 0.95rem;
+                color: #334155;
+                border-bottom: 1px solid #e2e8f0;
+              }
+              .block-body {
+                padding: 10px 12px;
+                background: #fff;
+              }
+              .block .row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 6px 0;
+                border-bottom: 1px solid #f1f5f9;
+                font-size: 0.9rem;
+              }
+              .block .row:last-child { border-bottom: none; }
+              .block .row.highlight { font-weight: 700; background: #f8fafc; margin: 4px -12px -4px; padding: 8px 12px; }
+              .block .row.variance-row {
+                margin: 8px -12px -4px;
+                padding: 12px 12px;
+                background: #f1f5f9;
+                border-top: 2px solid #cbd5e1;
+                font-size: 1.05rem;
+              }
+              .block .row.variance-row .label {
+                font-size: 1.1rem;
+                font-weight: 800;
+                color: #0f172a;
+              }
+              .block .row.variance-row .val { font-size: 1.1rem; font-weight: 800; }
+              .block .label { color: #475569; }
+              .block .val {
+                font-variant-numeric: tabular-nums;
+                font-weight: 500;
+                color: #0f172a;
+              }
+              .block .val.total { font-weight: 700; }
+              .block .val.variance.pos { color: #059669; }
+              .block .val.variance.neg { color: #dc2626; }
+              .expenses-detail, .notes-block {
+                margin-top: 12px;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                overflow: hidden;
+              }
+              .expense-item {
+                padding: 5px 12px;
+                font-size: 0.88rem;
+                border-bottom: 1px solid #f1f5f9;
+              }
+              .expense-item:last-child { border-bottom: none; }
+              .page-footer {
+                margin-top: 20px;
+                padding-top: 12px;
+                border-top: 1px solid #e2e8f0;
+                font-size: 0.8rem;
+                color: #64748b;
+                text-align: center;
+              }
+            </style>
+          </head>
+          <body>
+            ${pagesHtml}
+            <script>setTimeout(function(){ window.print(); window.close(); }, 350);</script>
+          </body>
+        </html>
+      `)
+      win.document.close()
+    },
+    []
+  )
+
+  const handlePrintAll = useCallback(() => {
+    const limit = filter === 'today' ? 50 : filter === 'yesterday' ? 100 : 200
+    const list = filterByPreset(getClosedForPrint(limit), filter)
+    printRows(list, `تقرير التقفيلات — ${filter === 'today' ? 'اليوم' : filter === 'yesterday' ? 'أمس' : 'الأسبوع الماضي'}`)
+  }, [filter, printRows])
+
+  const toggleRowSelection = useCallback((id: string) => {
+    setSelectedRowIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const handlePrintSelected = useCallback(() => {
+    if (selectedRowIds.size === 0) {
+      setToast({ msg: 'لم تحدد أي صفوف للطباعة', type: 'warning' })
+      return
+    }
+    const list = displayRows.filter((r) => selectedRowIds.has(r.id))
+    printRows(list, 'طباعة الصفوف المحددة')
+  }, [selectedRowIds, displayRows, printRows])
+
+  const handlePrintRow = useCallback(
+    (rowId: string) => {
+      const row = displayRows.find((r) => r.id === rowId)
+      if (!row) return
+      printRows([row], 'طباعة تقفيلة')
+    },
+    [displayRows, printRows]
+  )
+
+  const requestDeleteRow = useCallback((rowId: string) => {
+    setAdminCodeInput('')
+    setDeleteConfirm({ rowId, step: 'confirm' })
+  }, [])
+
+  const confirmDeleteRow = useCallback(() => {
+    if (!deleteConfirm) return
+    setDeleteConfirm((d) => (d ? { ...d, step: 'code' } : null))
+  }, [deleteConfirm])
+
+  const submitDeleteWithCode = useCallback(() => {
+    if (!deleteConfirm) return
+    if (adminCodeInput.trim() !== ADMIN_CODE) {
+      setToast({ msg: 'كود الأدمن غير صحيح', type: 'error' })
+      return
+    }
+    deleteRow(deleteConfirm.rowId)
+    setSelectedRowIds((prev) => {
+      const next = new Set(prev)
+      next.delete(deleteConfirm.rowId)
+      return next
+    })
+    loadRows()
+    setDeleteConfirm(null)
+    setAdminCodeInput('')
+    setShowAdminCode(false)
+    setToast({ msg: 'تم حذف الصف', type: 'success' })
+  }, [deleteConfirm, adminCodeInput, loadRows])
+
+  const requestDeleteAllClosed = useCallback(() => {
+    setAdminCodeInput('')
+    setDeleteAllClosedConfirm({ step: 'confirm' })
+  }, [])
+
+  const confirmDeleteAllClosed = useCallback(() => {
+    if (!deleteAllClosedConfirm) return
+    setDeleteAllClosedConfirm((d) => (d ? { ...d, step: 'code' } : null))
+  }, [deleteAllClosedConfirm])
+
+  const submitDeleteAllClosedWithCode = useCallback(() => {
+    if (!deleteAllClosedConfirm) return
+    if (adminCodeInput.trim() !== ADMIN_CODE) {
+      setToast({ msg: 'كود الأدمن غير صحيح', type: 'error' })
+      return
+    }
+    deleteAllClosedRows()
+    setSelectedRowIds(new Set())
+    loadRows()
+    setDeleteAllClosedConfirm(null)
+    setAdminCodeInput('')
+    setShowAdminCode(false)
+    setToast({ msg: 'تم حذف كل التقفيلات المغلقة', type: 'success' })
+  }, [deleteAllClosedConfirm, adminCodeInput, loadRows])
+
+  const transferFieldLabel = (f: TransferField) =>
+    f === 'cash' ? 'الكاش' : f === 'mada' ? 'مدى' : f === 'visa' ? 'فيزا' : f === 'mastercard' ? 'ماستر كارد' : 'تحويل بنكي'
+
+  const handleApplyCashToRow = useCallback(
+    (total: number) => {
+      if (!firstActiveId) {
+        setToast({ msg: 'لا يوجد صف نشط لترحيل الكاش إليه', type: 'warning' })
+        return
+      }
+      const activeRow = rows.find((r) => r.id === firstActiveId)
+      const currentCash = activeRow?.cash ?? 0
+      if (currentCash > 0) {
+        setTransferConfirm({ amount: total, currentValue: currentCash, field: 'cash' })
+        return
+      }
+      handleUpdate(firstActiveId, 'cash', total)
+      setToast({ msg: `تم ترحيل ${formatCurrency(total)} إلى خانة الكاش`, type: 'success' })
+    },
+    [firstActiveId, rows, handleUpdate]
+  )
+
+  const handleTransferConfirmYes = useCallback(() => {
+    if (!transferConfirm || !firstActiveId) return
+    handleUpdate(firstActiveId, transferConfirm.field, transferConfirm.amount)
+    setToast({ msg: `تم ترحيل ${formatCurrency(transferConfirm.amount)} إلى ${transferFieldLabel(transferConfirm.field)}`, type: 'success' })
+    setTransferConfirm(null)
+  }, [transferConfirm, firstActiveId, handleUpdate])
+
+  const handleTransferConfirmNo = useCallback(() => {
+    setTransferConfirm(null)
+  }, [])
+
+  const handleTransferFromCalculator = useCallback(
+    (amount: number, field: TransferField) => {
+      if (!firstActiveId) {
+        setToast({ msg: 'لا يوجد صف نشط لترحيل إليه', type: 'warning' })
+        return
+      }
+      const activeRow = rows.find((r) => r.id === firstActiveId)
+      const currentValue = activeRow ? (activeRow[field] as number) ?? 0 : 0
+      if (currentValue > 0) {
+        setTransferConfirm({ amount, currentValue, field })
+        return
+      }
+      handleUpdate(firstActiveId, field, amount)
+      setToast({ msg: `تم ترحيل ${formatCurrency(amount)} إلى ${transferFieldLabel(field)}`, type: 'success' })
+    },
+    [firstActiveId, rows, handleUpdate]
+  )
+
+  return (
+    <div className="min-h-screen bg-slate-900 text-slate-200 font-cairo">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-900/95 backdrop-blur">
+        <div className="mx-auto w-full max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            {(() => {
+              const { label, kind } = getGreeting(liveNow)
+              const iconClass = 'w-5 h-5 shrink-0'
+              const icons: Record<string, JSX.Element> = {
+                morning: (
+                  <svg className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="4.5" />
+                    <path d="M12 2v1.5M12 20.5V22M4.22 4.22l1.06 1.06M18.72 18.72l1.06 1.06M2 12h1.5M20.5 12H22M4.22 19.78l1.06-1.06M18.72 5.28l1.06-1.06" />
+                  </svg>
+                ),
+                noon: (
+                  <svg className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="4.5" />
+                    <path d="M12 2.5v2M12 19.5V22M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2.5 12H5M19 12h2.5M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+                    <path d="M12 7.5v4l2.5 2.5" strokeWidth="1.8" />
+                  </svg>
+                ),
+                evening: (
+                  <svg className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                    <path d="M12 2v3M12 19v3M3.5 12H6.5M17.5 12h3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12" strokeWidth="1.2" opacity="0.7" />
+                  </svg>
+                ),
+                night: (
+                  <svg className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                  </svg>
+                ),
+              }
+              const isNight = kind === 'night'
+              return (
+                <h1 className="flex items-center gap-3 py-2 px-4 rounded-xl border border-white/10 bg-slate-800/50 shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
+                  <span className={`flex items-center justify-center w-9 h-9 rounded-lg ${isNight ? 'bg-indigo-500/20 text-indigo-300' : 'bg-amber-500/15 text-amber-400'}`}>
+                    {icons[kind]}
+                  </span>
+                  <span className="text-base font-semibold text-slate-200 tracking-tight flex items-center gap-1">
+                    <span className={isNight ? 'text-indigo-300/90' : 'text-amber-400/95'}>{label}</span>
+                    <span className="text-slate-400 font-normal">،</span>
+                    <span className="text-slate-400 text-sm font-cairo text-right">{name}</span>
+                  </span>
+                </h1>
+              )
+            })()}
+            <div className="rounded-xl border border-slate-600/50 bg-slate-800/60 px-2 py-1.5 shadow-[0_2px_6px_rgba(0,0,0,0.15)]">
+              <button
+                type="button"
+                onClick={onExit}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 text-sm font-cairo transition"
+                title="تغيير المستخدم"
+              >
+                <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M4 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+                  <path d="M16 11l3 3-3 3" />
+                  <path d="M19 14h-5" />
+                </svg>
+                <span>تغيير المستخدم</span>
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              aria-hidden
+              onChange={handleExcelUpload}
+            />
+            <div className="rounded-xl border border-violet-500/25 bg-violet-500/10 px-2 py-1.5 shadow-[0_2px_8px_rgba(139,92,246,0.12)]">
+              <button
+                type="button"
+                onClick={handleUploadFilesClick}
+                className="inline-flex items-center justify-center gap-2.5 px-4 py-2 rounded-lg text-base font-cairo font-bold bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border border-violet-400/30 shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
+                title="رفع ملف إكسل للمعاملات البنكية"
+              >
+                <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                  <path d="M17 8l-5-5-5 5" />
+                  <path d="M12 3v12" />
+                </svg>
+                <span>رفع ملفات</span>
+              </button>
+            </div>
+            <span className="w-px h-6 bg-white/10 rounded-full" aria-hidden="true" />
+            <div className="flex items-center gap-1 rounded-xl border border-amber-500/25 bg-amber-500/10 px-2 py-1.5 shadow-[0_2px_6px_rgba(245,158,11,0.08)]">
+              <span className="flex items-center justify-center w-7 h-7 rounded-md bg-amber-500/15 text-amber-400/90 shrink-0" aria-hidden="true">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <path d="M16 2v4M8 2v4M3 10h18" />
+                </svg>
+              </span>
+              {FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setFilter(f.id)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                    filter === f.id ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40 shadow-sm' : 'text-slate-400 border border-transparent hover:bg-white/5 hover:text-slate-300'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <span className="w-px h-6 bg-white/10 rounded-full" aria-hidden="true" />
+            <div className="flex items-center gap-1.5 rounded-xl border border-sky-500/25 bg-sky-500/10 px-2 py-1.5 shadow-[0_2px_6px_rgba(14,165,233,0.08)]">
+              <button
+                type="button"
+                onClick={handlePrintAll}
+                className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-bold transition"
+                title="طباعة كل الصفوف المعروضة"
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M6 9V2h12v7" />
+                  <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
+                  <path d="M6 14h12v8H6z" />
+                </svg>
+                <span>الكل</span>
+              </button>
+              {selectedRowIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={handlePrintSelected}
+                  className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg bg-sky-500/90 hover:bg-sky-500 text-white text-sm font-bold transition"
+                  title={`طباعة ${selectedRowIds.size} صف محدد`}
+                >
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M6 9V2h12v7" />
+                    <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
+                    <path d="M6 14h12v8H6z" />
+                  </svg>
+                  <span>المحددة ({selectedRowIds.size})</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] px-4 py-4 flex flex-col gap-4">
+        {/* جدول الصفوف — تصميم 2026: زجاجية خفيفة، تباين ناعم، تسلسل بصري واضح */}
+        <div
+          className="rounded-3xl overflow-hidden flex flex-col border border-white/[0.06] bg-slate-800/30 backdrop-blur-sm shadow-[0_8px_32px_rgba(0,0,0,0.24),0_0_0_1px_rgba(255,255,255,0.04)_inset]"
+          style={{ minHeight: ROWS_PER_PAGE * 52 + 48 + 56 + 44 }}
+        >
+          <div className="overflow-x-auto flex-1 min-h-0 scrollbar-thin" style={{ scrollbarGutter: 'stable' }}>
+            <table className="w-full text-sm border-collapse table-fixed" style={{ tableLayout: 'fixed', width: '100%' }}>
+              <colgroup>
+                <col style={{ width: '3%' }} />
+                <col style={{ width: '2.5%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '10%' }} />
+              </colgroup>
+              <thead className="sticky top-0 z-10 bg-slate-800/90 backdrop-blur-md border-b border-white/[0.06]">
+                <tr className="h-16">
+                  <th className="p-2 text-center text-amber-400/90 text-xs font-semibold tracking-wide align-middle border-r border-white/[0.05] font-cairo">تحديد</th>
+                  <th className="p-2 text-center text-slate-400 text-xs font-medium align-middle border-r border-white/[0.05] font-cairo">م</th>
+                  <th className="p-2 text-center text-amber-400/90 text-xs font-semibold tracking-wide align-middle border-r border-white/[0.05] font-cairo">كاش</th>
+                  <th className="p-2 text-center text-slate-300/90 text-xs font-medium align-middle border-r border-white/[0.05] font-cairo" title="مرسل للخزنة — يدخل في معادلة انحراف الكاش">مرسل للخزنة</th>
+                  <th className="p-2 text-center text-slate-300/90 text-xs font-medium align-middle border-r border-white/[0.05] font-cairo" title="يُخصم من المصروفات في انحراف الكاش">تعويض مصروفات</th>
+                  <th className="p-2 text-center text-amber-400/90 text-xs font-semibold align-middle border-r border-white/[0.05] font-cairo">المصروفات</th>
+                  <th className="p-2 text-center text-emerald-400/95 text-xs font-semibold align-middle border-r border-white/[0.05] font-cairo">رصيد البرنامج كاش</th>
+                  <th className="p-2 text-center text-red-400/95 text-xs font-semibold align-middle border-r border-red-500/20 bg-red-500/5 font-cairo">انحراف الكاش</th>
+                  <th className="p-2 text-center text-slate-300/90 text-xs font-medium align-middle border-r border-white/[0.05] font-cairo">مدى</th>
+                  <th className="p-2 text-center text-slate-300/90 text-xs font-medium align-middle border-r border-white/[0.05] font-cairo">فيزا</th>
+                  <th className="p-2 text-center text-slate-300/90 text-xs font-medium align-middle border-r border-white/[0.05] font-cairo">ماستر كارد</th>
+                  <th className="p-2 text-center text-sky-400/95 text-xs font-medium align-middle border-r border-white/[0.05] font-cairo">تحويل بنكي</th>
+                  <th className="p-2 text-center text-emerald-400/95 text-xs font-semibold align-middle border-r border-white/[0.05] font-cairo">اجمالى الموازنه</th>
+                  <th className="p-2 text-center text-red-400/95 text-xs font-semibold align-middle border-r border-red-500/20 bg-red-500/5 font-cairo">انحراف البنك</th>
+                  <th className="p-2 text-center text-slate-400 text-xs font-medium align-middle border-r border-white/[0.05] overflow-hidden min-w-0 font-cairo">
+                    <div className="flex flex-col items-center justify-center gap-1 h-full min-w-0">
+                      <span className="truncate max-w-full">الحالة / إجراءات</span>
+                      <button
+                        type="button"
+                        onClick={requestDeleteAllClosed}
+                        aria-label="حذف كل التقفيلات المغلقة"
+                        className="inline-flex items-center justify-center w-6 h-6 rounded-lg border border-red-500/20 bg-slate-700/50 text-slate-400 hover:bg-red-500/15 hover:text-red-400 hover:border-red-500/30 transition-all shrink-0"
+                        title="حذف كل التقفيلات المغلقة"
+                      >
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                          <path d="M10 11v6M14 11v6" />
+                        </svg>
+                      </button>
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRows.map((r, idx) => (
+                  <ClosureRowComp
+                    key={r.id}
+                    row={r}
+                    rowNumber={(currentPage - 1) * ROWS_PER_PAGE + idx + 1}
+                    isFirstActive={r.id === firstActiveId}
+                    liveNow={liveNow}
+                    closingRowId={closingRowId}
+                    closingSecondsLeft={closingRowId === r.id ? closingSecondsLeft : 0}
+                    onUpdate={handleUpdate}
+                    isSelected={selectedRowIds.has(r.id)}
+                    onToggleSelect={toggleRowSelection}
+                    onDeleteRow={requestDeleteRow}
+                    onPrintRow={handlePrintRow}
+                    onOpenExpenseDetails={openExpenseDetails}
+                    onClearExpensesAndOpen={clearExpensesAndOpenModal}
+                    onLockedFieldClick={handleLockedFieldClick}
+                    onExpenseCompensationExceeded={handleExpenseCompensationExceeded}
+                    lastExcelDetails={lastExcelDetails}
+                    onShowExcelDetails={setExcelDetailModal}
+                    onShowEmployeeNames={lastExcelEmployeeNamesList.length > 0 ? () => setShowEmployeeNamesModal(true) : undefined}
+                    onShowVarianceExplanation={(type, row) => setVarianceExplanationModal({ type, row })}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {displayRows.length > ROWS_PER_PAGE && (
+            <div className="px-4 py-3 border-t border-white/[0.06] flex items-center justify-center gap-2 flex-wrap rounded-b-3xl bg-slate-800/50 backdrop-blur-sm">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-amber-500/25 bg-amber-500/10 text-amber-400/95 hover:bg-amber-500/20 hover:border-amber-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-white/10 disabled:bg-slate-800/60 disabled:text-slate-500 transition-all"
+                aria-label="الصفحة السابقة"
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+                السابق
+              </button>
+              <span className="inline-flex items-center min-w-[4rem] justify-center px-3 py-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 text-sm font-cairo font-semibold tabular-nums shadow-[0_0_12px_rgba(245,158,11,0.1)]">
+                {currentPage === 1 ? 'الرئيسية' : currentPage} / {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage >= totalPages}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-amber-500/25 bg-amber-500/10 text-amber-400/95 hover:bg-amber-500/20 hover:border-amber-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-white/10 disabled:bg-slate-800/60 disabled:text-slate-500 transition-all"
+                aria-label="الصفحة التالية"
+              >
+                التالي
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </button>
+            </div>
+          )}
+          {displayRows.length === 0 && (
+            <div className="py-16 px-4 text-center rounded-b-3xl bg-slate-800/20">
+              <p className="text-slate-500 font-cairo mb-1">لا توجد تقفيلات</p>
+              <p className="text-slate-600 text-sm font-cairo">اختر فلتراً مختلفاً أو ابدأ شفتاً جديداً</p>
+            </div>
+          )}
+        </div>
+
+        {/* شريط إغلاق الشفت والتراجع — تحت الجدول، فوق الحاسبتين */}
+        <div className="flex flex-col items-center justify-center gap-2 py-3 px-4 rounded-xl border border-amber-500/30 bg-gradient-to-b from-amber-500/10 to-slate-800/60 min-h-0 shadow-[0_4px_20px_rgba(245,158,11,0.12),0_0_1px_rgba(255,255,255,0.06)]">
+          {closingRowId ? (
+            <div className="flex flex-wrap items-center justify-center w-full" dir="ltr">
+              {closingSecondsLeft > 0 ? (
+                <button
+                  type="button"
+                  onClick={handleUndoClose}
+                  className="btn-close-shift inline-flex items-center justify-center gap-3 px-7 py-3.5 rounded-2xl text-base font-cairo font-bold whitespace-nowrap border-2 border-emerald-500/60 bg-gradient-to-b from-emerald-500/30 to-emerald-600/20 text-emerald-50 shadow-[0_4px_24px_rgba(16,185,129,0.25)] hover:from-emerald-500/40 hover:to-emerald-600/30 hover:shadow-[0_6px_28px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all select-none"
+                >
+                  <svg className="w-6 h-6 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 10h10a5 5 0 015 5v2" />
+                    <path d="M7 15l-4-4 4-4" />
+                  </svg>
+                  <span className="tracking-wide">تراجع</span>
+                  <span className="tabular-nums font-cairo">({closingSecondsLeft} ثانية)</span>
+                </button>
+              ) : (
+                <span className="text-sm font-cairo font-medium text-amber-400 tabular-nums">جاري الإغلاق...</span>
+              )}
+            </div>
+          ) : firstActiveId && firstActiveRow ? (
+            <button
+              type="button"
+              onClick={() => handleCloseShift(firstActiveId)}
+              disabled={!canCloseShift}
+              className={`btn-close-shift inline-flex items-center justify-center gap-3 px-8 py-3.5 min-w-[280px] rounded-2xl text-base font-cairo font-bold whitespace-nowrap border-2 select-none transition-all
+                ${canCloseShift
+                  ? 'bg-gradient-to-b from-amber-500/50 to-amber-600/40 text-amber-50 border-amber-400 shadow-[0_4px_24px_rgba(245,158,11,0.3)] hover:from-amber-500/60 hover:to-amber-600/50 hover:shadow-[0_6px_28px_rgba(245,158,11,0.35)] hover:scale-[1.02] active:scale-[0.98]'
+                  : 'bg-slate-700/50 text-slate-500 border-slate-600/50 cursor-not-allowed opacity-70'
+                }`}
+              title={canCloseShift ? 'إغلاق الشفت وحفظ التقفيلة' : 'أدخل رصيد البرنامج كاش وإجمالي الموازنة (البنك) أولاً'}
+            >
+              <svg className={`btn-close-shift-icon w-6 h-6 shrink-0 ${canCloseShift ? 'text-amber-200' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0110 0v4" />
+              </svg>
+              <span className="tracking-wide">
+                {firstActiveRow.employeeName
+                  ? `إغلاق شفت ${firstActiveRow.employeeName}`
+                  : 'إغلاق الشفت الحالي'}
+              </span>
+            </button>
+          ) : null}
+        </div>
+
+        {/* الحاسبتان — تُصفَّران عند انتهاء مهلة الإغلاق للتجهيز لشفت جديد */}
+        <section className="grid grid-cols-1 sm:grid-cols-[1fr_minmax(420px,1.2fr)] gap-3 w-full max-w-4xl lg:max-w-5xl xl:max-w-6xl items-stretch">
+          <Calculator key={`calculator-${calculatorsResetKey}`} onTransfer={handleTransferFromCalculator} hasActiveRow={!!firstActiveId} />
+          <CashCalculator key={`cashCalculator-${calculatorsResetKey}`} onApplyToCash={handleApplyCashToRow} hasActiveRow={!!firstActiveId} />
+        </section>
+      </main>
+
+      {toast && (
+        <Toast
+          message={toast.msg}
+          type={toast.type}
+          onClose={() => setToast(null)}
+          position="center"
+          autoHideMs={toast.autoHideMs}
+        />
+      )}
+
+      {excelDetailModal && lastExcelDetails && lastExcelDetails[excelDetailModal].length > 0 && (() => {
+        const list = lastExcelDetails[excelDetailModal]
+        const total = list.reduce((s, t) => s + t.amount, 0)
+        const labels: Record<keyof ExcelDetails, string> = {
+          mada: 'مدى',
+          visa: 'فيزا',
+          mastercard: 'ماستر كارد',
+          bankTransfer: 'تحويل بنكي',
+        }
+        const title = `تفاصيل ${labels[excelDetailModal]} — ${list.length} عملية`
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default" role="dialog" aria-modal="true" aria-labelledby="excel-detail-title" onClick={() => setExcelDetailModal(null)}>
+            <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-sm w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+              <h2 id="excel-detail-title" className="text-base font-bold text-amber-400 p-4 pb-2 border-b border-white/10">
+                {title}
+              </h2>
+              <div className="overflow-y-auto flex-1 min-h-0 p-3 space-y-2">
+                {list.map((t, i) => (
+                  <div key={i} className="py-2 border-b border-white/5">
+                    <div className="flex justify-between items-center gap-2 text-sm text-slate-300">
+                      <div className="flex flex-col items-start gap-0.5 min-w-0">
+                        <span className="tabular-nums font-cairo">{formatDateTime(t.date)}</span>
+                        {t.employeeName && (
+                          <span className="text-xs text-slate-400 font-cairo">— {t.employeeName}</span>
+                        )}
+                      </div>
+                      <span className="tabular-nums font-medium text-amber-200/95 shrink-0">{formatCurrency(t.amount)}</span>
+                    </div>
+                    {t.purpose && (
+                      <p className="text-xs font-cairo text-amber-200/80 mt-1 pr-0 border-t border-amber-500/20 pt-1">
+                        {t.purpose}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 pt-2 border-t border-amber-500/30 flex justify-between items-center bg-slate-900/50">
+                <span className="font-bold text-slate-200">الإجمالي</span>
+                <span className="tabular-nums font-bold text-amber-400">{formatCurrency(total)}</span>
+              </div>
+              <div className="p-3">
+                <button
+                  type="button"
+                  onClick={() => setExcelDetailModal(null)}
+                  className="w-full py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {showEmployeeNamesModal && lastExcelEmployeeNamesList.length > 0 && (() => {
+        const employeeStats: { name: string; count: number; total: number }[] = lastExcelEmployeeNamesList.map((name) => {
+          let count = 0
+          let total = 0
+          if (lastExcelDetails) {
+            for (const key of ['mada', 'visa', 'mastercard', 'bankTransfer'] as const) {
+              const list = lastExcelDetails[key] ?? []
+              for (const t of list) {
+                if ((t.employeeName ?? '').trim() === name) {
+                  count += 1
+                  total += t.amount
+                }
+              }
+            }
+          }
+          return { name, count, total }
+        })
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default" role="dialog" aria-modal="true" aria-labelledby="employee-names-title" onClick={() => setShowEmployeeNamesModal(false)}>
+            <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+              <h2 id="employee-names-title" className="text-base font-bold text-amber-400 p-4 pb-2 border-b border-white/10">
+                أسماء الموظفين في العمليات المستوردة
+              </h2>
+              <div className="overflow-y-auto flex-1 min-h-0 p-3 space-y-1.5">
+                {employeeStats.map((s, i) => (
+                  <div key={i} className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-300 py-2 px-3 rounded-lg bg-slate-900/50 border border-white/5 font-cairo">
+                    <span className="font-medium text-slate-200">{s.name}</span>
+                    <span className="tabular-nums text-amber-200/90 text-xs">
+                      {s.count} عملية — الإجمالي: {formatCurrency(s.total)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="p-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setShowEmployeeNamesModal(false)}
+                  className="w-full py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {varianceExplanationModal && (() => {
+        const { type, row } = varianceExplanationModal
+        const cash = (row.cash ?? 0)
+        const sentToTreasury = (row.sentToTreasury ?? 0)
+        const expenses = (row.expenses ?? 0)
+        const expenseCompensation = (row.expenseCompensation ?? 0)
+        const effectiveExpenses = Math.max(0, expenses - expenseCompensation)
+        const programBalanceCash = row.programBalanceCash ?? 0
+        const expectedProgramCash = cash + sentToTreasury + effectiveExpenses
+        const cashVariance = computeCashVariance(row)
+        const bankTotal = row.mada + row.visa + row.mastercard + row.bankTransfer
+        const programBalanceBank = row.programBalanceBank ?? 0
+        const bankVariance = computeBankVariance(row)
+        const isCash = type === 'cash'
+        const title = isCash ? 'شرح انحراف الكاش' : 'شرح انحراف البنك'
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default" role="dialog" aria-modal="true" aria-labelledby="variance-explanation-title" onClick={() => setVarianceExplanationModal(null)}>
+            <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+              <h2 id="variance-explanation-title" className="text-base font-bold text-amber-400 p-4 pb-2 border-b border-white/10">
+                {title}
+              </h2>
+              <div className="overflow-y-auto flex-1 min-h-0 p-4 space-y-3 text-sm text-slate-300">
+                {isCash ? (
+                  <>
+                    <p className="text-slate-200 font-medium">انحراف الكاش = (كاش + مرسل للخزنة + مصروفات فعّالة) − رصيد البرنامج كاش</p>
+                    <ul className="space-y-1.5 list-none">
+                      <li className="flex justify-between gap-2"><span>كاش</span><span className="tabular-nums text-amber-200/90">{formatCurrency(cash)}</span></li>
+                      <li className="flex justify-between gap-2"><span>مرسل للخزنة</span><span className="tabular-nums text-amber-200/90">{formatCurrency(sentToTreasury)}</span></li>
+                      <li className="flex justify-between gap-2"><span>مصروفات</span><span className="tabular-nums text-amber-200/90">{formatCurrency(expenses)}</span></li>
+                      <li className="flex justify-between gap-2"><span>تعويض مصروفات</span><span className="tabular-nums text-amber-200/90">− {formatCurrency(expenseCompensation)}</span></li>
+                      <li className="flex justify-between gap-2 border-t border-white/10 pt-1.5"><span>مصروفات فعّالة (صافي)</span><span className="tabular-nums text-amber-200/90">{formatCurrency(effectiveExpenses)}</span></li>
+                      <li className="flex justify-between gap-2 font-medium"><span>كاش + مرسل للخزنة + مصروفات فعّالة</span><span className="tabular-nums text-amber-300">{formatCurrency(expectedProgramCash)}</span></li>
+                      <li className="flex justify-between gap-2"><span>رصيد البرنامج كاش</span><span className="tabular-nums text-amber-200/90">− {formatCurrency(programBalanceCash)}</span></li>
+                      <li className="flex justify-between gap-2 border-t border-amber-500/30 pt-2 font-bold text-amber-300"><span>انحراف الكاش</span><span className="tabular-nums">{cashVariance > 0 ? '+' : ''}{formatCurrency(cashVariance)}</span></li>
+                    </ul>
+                    <p className="text-xs text-slate-400 pt-1">
+                      {cashVariance > 0 ? 'زيادة: الكاش الفعلي (أو المرسل + المصروف الفعلي) أكبر من رصيد البرنامج.' : cashVariance < 0 ? 'عجز: رصيد البرنامج كاش أكبر من المتوقّع من الكاش والمرسل والمصروف.' : 'لا يوجد انحراف.'}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-slate-200 font-medium">انحراف البنك = إجمالي البنك (مدى + فيزا + ماستر كارد + تحويل بنكي) − إجمالي الموازنة</p>
+                    <ul className="space-y-1.5 list-none">
+                      <li className="flex justify-between gap-2"><span>مدى</span><span className="tabular-nums text-amber-200/90">{formatCurrency(row.mada)}</span></li>
+                      <li className="flex justify-between gap-2"><span>فيزا</span><span className="tabular-nums text-amber-200/90">{formatCurrency(row.visa)}</span></li>
+                      <li className="flex justify-between gap-2"><span>ماستر كارد</span><span className="tabular-nums text-amber-200/90">{formatCurrency(row.mastercard)}</span></li>
+                      <li className="flex justify-between gap-2"><span>تحويل بنكي</span><span className="tabular-nums text-amber-200/90">{formatCurrency(row.bankTransfer)}</span></li>
+                      <li className="flex justify-between gap-2 border-t border-white/10 pt-1.5 font-medium"><span>إجمالي البنك</span><span className="tabular-nums text-amber-300">{formatCurrency(bankTotal)}</span></li>
+                      <li className="flex justify-between gap-2"><span>إجمالي الموازنة (رصيد البرنامج بنك)</span><span className="tabular-nums text-amber-200/90">− {formatCurrency(programBalanceBank)}</span></li>
+                      <li className="flex justify-between gap-2 border-t border-amber-500/30 pt-2 font-bold text-amber-300"><span>انحراف البنك</span><span className="tabular-nums">{bankVariance > 0 ? '+' : ''}{formatCurrency(bankVariance)}</span></li>
+                    </ul>
+                    <p className="text-xs text-slate-400 pt-1">
+                      {bankVariance > 0 ? 'زيادة: إجمالي مدى/فيزا/ماستر/تحويل أكبر من إجمالي الموازنة.' : bankVariance < 0 ? 'عجز: إجمالي الموازنة أكبر من إجمالي البنك المسجّل.' : 'لا يوجد انحراف.'}
+                    </p>
+                  </>
+                )}
+              </div>
+              <div className="p-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setVarianceExplanationModal(null)}
+                  className="w-full py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {closeConfirmVariance && (() => {
+        const { cashVar, bankVar } = closeConfirmVariance
+        const cashTip = cashVar !== 0 ? (cashVar > 0 ? 'زيادة في صندوق الكاش — راجع الرصيد الفعلي' : 'عجز في صندوق الكاش — راجع الكاش والرصيد والمصروف') : ''
+        const bankTip = bankVar !== 0 ? (bankVar > 0 ? 'زيادة في البنك — راجع إدخالات مدى/فيزا/ماستر/التحويل' : 'عجز في البنك — راجع إجمالي البنك واجمالى الموازنه') : ''
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="close-variance-title">
+            <div className="rounded-2xl border border-amber-500/30 bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+              <h2 id="close-variance-title" className="text-lg font-bold text-amber-400 mb-3">
+                تنبيه: يوجد انحراف
+              </h2>
+              <div className="text-slate-300 text-sm leading-relaxed mb-4 space-y-2">
+                {cashVar !== 0 && (
+                  <p className="block">
+                    <span className="font-medium">انحراف الكاش: </span>
+                    <span className="font-bold tabular-nums text-amber-300">{cashVar > 0 ? '+' : ''}{formatCurrency(cashVar)}</span>
+                    {cashTip && <span className="block text-amber-200/90 text-xs mt-0.5">{cashTip}</span>}
+                  </p>
+                )}
+                {bankVar !== 0 && (
+                  <p className="block">
+                    <span className="font-medium">انحراف البنك: </span>
+                    <span className="font-bold tabular-nums text-amber-300">{bankVar > 0 ? '+' : ''}{formatCurrency(bankVar)}</span>
+                    {bankTip && <span className="block text-amber-200/90 text-xs mt-0.5">{bankTip}</span>}
+                  </p>
+                )}
+                <p className="pt-2 text-slate-200">هل تريد الإغلاق مع هذا الانحراف؟</p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={confirmCloseWithVariance}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-amber-500 hover:bg-amber-400 text-slate-900 transition"
+                >
+                  نعم، إغلاق الشفت
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelCloseWithVariance}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+                >
+                  لا، متابعة التعديل
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {transferConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="transfer-confirm-title">
+          <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <h2 id="transfer-confirm-title" className="text-lg font-bold text-amber-400 mb-3">
+              ترحيل إلى {transferFieldLabel(transferConfirm.field)}
+            </h2>
+            <p className="text-slate-300 text-sm leading-relaxed mb-4">
+              هل تريد ترحيل الرقم الجديد وهو <span className="font-bold text-white tabular-nums">{formatCurrency(transferConfirm.amount)}</span>؟ يوجد رقم في الخانة وهو <span className="font-bold text-white tabular-nums">{formatCurrency(transferConfirm.currentValue)}</span>.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleTransferConfirmYes}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition"
+              >
+                نعم
+              </button>
+              <button
+                type="button"
+                onClick={handleTransferConfirmNo}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+              >
+                لا
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {uploadAskModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="upload-ask-title">
+          <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <h2 id="upload-ask-title" className="text-lg font-bold text-amber-400 mb-3">
+              رفع ملف Excel
+            </h2>
+            <p className="text-slate-300 text-sm leading-relaxed mb-4">
+              اعتماد تاريخ ووقت آخر تقفيلة كبداية للفترة؟ (ستُستورد المعاملات بعد هذا التاريخ فقط)
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleUploadUseLastClosure}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition"
+              >
+                نعم
+              </button>
+              <button
+                type="button"
+                onClick={handleUploadPickCustomDate}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+              >
+                لا — اختر تاريخاً ووقتاً
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {uploadCustomDateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="upload-custom-date-title">
+          <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <h2 id="upload-custom-date-title" className="text-lg font-bold text-amber-400 mb-3">
+              تاريخ ووقت بداية الفترة
+            </h2>
+            <p className="text-slate-300 text-sm leading-relaxed mb-4">
+              اختر التاريخ والوقت؛ ستُستورد المعاملات بعد هذا التاريخ والوقت فقط.
+            </p>
+            <div className="flex flex-col gap-3 mb-4">
+              <label className="text-slate-400 text-sm font-cairo">
+                التاريخ
+                <input
+                  type="date"
+                  value={uploadCustomDateModal.date}
+                  onChange={(e) => setUploadCustomDateModal((p) => (p ? { ...p, date: e.target.value } : null))}
+                  className="mt-1 w-full px-3 py-2 rounded-lg bg-slate-900 border border-white/10 text-white font-cairo"
+                  dir="ltr"
+                />
+              </label>
+              <label className="text-slate-400 text-sm font-cairo">
+                الوقت
+                <input
+                  type="time"
+                  value={uploadCustomDateModal.time}
+                  onChange={(e) => setUploadCustomDateModal((p) => (p ? { ...p, time: e.target.value } : null))}
+                  className="mt-1 w-full px-3 py-2 rounded-lg bg-slate-900 border border-white/10 text-white font-cairo"
+                  dir="ltr"
+                />
+              </label>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setUploadCustomDateModal(null)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleUploadCustomDateConfirm}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-violet-600 hover:bg-violet-500 text-white transition"
+              >
+                رفع الملف
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {expenseModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="expense-modal-title"
+          onClick={() => setExpenseModal(null)}
+        >
+          <div
+            className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-lg w-full max-h-[85vh] flex flex-col font-cairo cursor-auto"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !expenseModal.readOnly) {
+                e.preventDefault()
+                saveExpenseModal()
+              }
+            }}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
+              <h2 id="expense-modal-title" className="text-lg font-bold text-amber-400">
+                {expenseModal.readOnly ? 'تفاصيل المصروفات' : 'تصنيف المبلغ المصروف'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setExpenseModal(null)}
+                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition"
+                aria-label="إغلاق"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {!expenseModal.readOnly && (
+              <>
+                <p className="text-slate-400 text-sm px-4 pt-2">أدخل تفاصيل المصروف (مثال: 10 ريال كتب، 10 ريال مسطرة)</p>
+                {(expenseModal.carriedCount ?? 0) > 0 && (
+                  <p className="text-amber-200/80 text-xs px-4 pt-0.5 font-cairo">البنود المرحّلة للعرض فقط — يمكنك إضافة تصنيف ومبلغ جديد فقط، ويُحدَّث المجموع وخانة المصروفات تلقائياً.</p>
+                )}
+              </>
+            )}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {!expenseModal.readOnly && expenseModal.items.length > 0 && (
+                <div className="flex gap-2 items-center pb-0.5">
+                  <span className="flex-1 text-xs font-medium text-slate-500 font-cairo">بند المصروف</span>
+                  <span className="w-24 text-xs font-medium text-slate-500 font-cairo text-center">مبلغ المصروف</span>
+                  <span className="w-10 shrink-0" aria-hidden="true" />
+                </div>
+              )}
+              {expenseModal.items.map((item, index) => {
+                const carriedCount = expenseModal.carriedCount ?? 0
+                const isLocked = !expenseModal.readOnly && index < carriedCount
+                return (
+                  <div key={index} className="flex gap-2 items-center">
+                    {expenseModal.readOnly || isLocked ? (
+                      <>
+                        <span className="w-24 px-3 py-2 rounded-lg bg-slate-900/60 border border-white/10 text-slate-200 text-sm text-center tabular-nums">
+                          {formatCurrency(Number(item.amount) || 0)}
+                        </span>
+                        <span className="flex-1 px-3 py-2 rounded-lg bg-slate-900/60 border border-white/10 text-slate-200 text-sm font-cairo">
+                          {item.description || '—'}
+                          {isLocked && (
+                            <span className="mr-1 text-[10px] text-slate-500 font-cairo" title="من الشفت السابق"> (مرحّل)</span>
+                          )}
+                        </span>
+                        {!expenseModal.readOnly && isLocked ? (
+                          <button
+                            type="button"
+                            onClick={() => requestDeleteCarriedItem(expenseModal.rowId, index)}
+                            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-red-500/20 text-slate-400 hover:text-red-400 hover:border-red-500/40"
+                            title="حذف البند المرحّل (يتطلب كود أدمن)"
+                            aria-label="حذف بند مرحّل"
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                          </button>
+                        ) : (
+                          <span className="w-10 shrink-0" aria-hidden="true" />
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {(() => {
+                          const amountVal = expenseAmountRef.current[index] !== undefined ? expenseAmountRef.current[index] : String(item.amount ?? '')
+                          const hasAmount = (Number(String(amountVal).replace(/,/g, '')) || 0) > 0
+                          const descEmpty = !String(item.description || '').trim()
+                          const needsDesc = hasAmount && descEmpty
+                          const isPulsing = pulseExpenseDescriptionIndex === index
+                          return (
+                            <input
+                              ref={(el) => {
+                                if (!el || index !== carriedCount) return
+                                if (expenseModal.readOnly || expenseModalFocusedRowIdRef.current === expenseModal.rowId) return
+                                expenseModalFocusedRowIdRef.current = expenseModal.rowId
+                                el.focus()
+                              }}
+                              type="text"
+                              tabIndex={index === carriedCount ? 0 : -1}
+                              value={item.description}
+                              onChange={(e) => {
+                                updateExpenseModalItem(index, 'description', e.target.value)
+                                if (pulseExpenseDescriptionIndex === index) setPulseExpenseDescriptionIndex(null)
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  saveExpenseModal()
+                                }
+                              }}
+                              placeholder={hasAmount ? 'الوصف إلزامي' : 'الوصف'}
+                              title={hasAmount ? 'الوصف إلزامي عند وجود مبلغ' : undefined}
+                              aria-required={hasAmount}
+                              className={`flex-1 px-3 py-2 rounded-lg bg-slate-900/80 border text-white text-sm font-cairo placeholder:text-slate-500 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/25 ${needsDesc ? 'border-amber-500/50 ring-1 ring-amber-500/25' : 'border-amber-500/25'} ${isPulsing ? 'expense-description-pulse' : ''}`}
+                            />
+                          )
+                        })()}
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          tabIndex={-1}
+                          dir="ltr"
+                          value={toLatinDigits(expenseAmountRef.current[index] !== undefined ? expenseAmountRef.current[index] : String(item.amount ?? ''))}
+                          onChange={(e) => {
+                            let v = toLatinDigits(e.target.value).replace(/[^\d.]/g, '')
+                            const dotIdx = v.indexOf('.')
+                            if (dotIdx >= 0) v = v.slice(0, dotIdx + 1) + v.slice(dotIdx + 1).replace(/\./g, '')
+                            expenseAmountRef.current[index] = v
+                            updateExpenseModalItem(index, 'amount', v)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              saveExpenseModal()
+                            }
+                          }}
+                          placeholder="مبلغ"
+                          className="cashbox-input w-24 px-3 py-2 rounded-lg bg-slate-900/80 border border-amber-500/25 text-white text-sm text-center focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/25"
+                        />
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          onClick={() => removeExpenseModalRow(index)}
+                          disabled={expenseModal.items.length <= 1}
+                          className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/20 disabled:opacity-40 disabled:pointer-events-none transition"
+                          aria-label="حذف السطر"
+                          title="حذف"
+                        >
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <div className="p-4 border-t border-white/10 flex flex-wrap items-center gap-3">
+              {!expenseModal.readOnly && (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={addExpenseModalRow}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-amber-500/20 text-amber-400 border border-amber-500/40 hover:bg-amber-500/30 transition"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  إضافة سطر
+                </button>
+              )}
+              <div className="flex-1" />
+              {!expenseModal.readOnly ? (
+                <div className="flex flex-col items-end gap-2">
+                  <span className="text-slate-400 text-sm font-cairo">
+                    المجموع: <span className="font-bold text-amber-400 tabular-nums">{formatCurrency(expenseModal.items.reduce((s, it) => s + (Number(it.amount) || 0), 0))}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={saveExpenseModal}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Tab') {
+                        e.preventDefault()
+                        saveExpenseModal()
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-slate-800 focus:shadow-[0_0_16px_rgba(16,185,129,0.4)]"
+                  >
+                    تعديل مبلغ المصروفات
+                  </button>
+                </div>
+              ) : (
+                <span className="text-slate-400 text-sm font-cairo">
+                  المجموع: <span className="font-bold text-amber-400 tabular-nums">{formatCurrency(expenseModal.items.reduce((s, it) => s + (Number(it.amount) || 0), 0))}</span>
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteCarriedConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-carried-dialog-title">
+          <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <h2 id="delete-carried-dialog-title" className="text-lg font-bold text-amber-400 mb-3">
+              {deleteCarriedConfirm.step === 'confirm' ? 'حذف بند مرحّل' : 'كود الأدمن'}
+            </h2>
+            {deleteCarriedConfirm.step === 'confirm' ? (
+              <>
+                <p className="text-slate-300 text-sm leading-relaxed mb-4">هل تريد حذف هذا البند المرحّل؟ يتطلب إدخال كود الأدمن في الخطوة التالية.</p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={confirmDeleteCarriedItem}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition"
+                  >
+                    نعم
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setDeleteCarriedConfirm(null) }}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+                  >
+                    لا
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-slate-300 text-sm leading-relaxed mb-3">ادخل كود الأدمن</p>
+                <div className="relative mb-4">
+                  <input
+                    type={showAdminCode ? 'text' : 'password'}
+                    value={adminCodeInput}
+                    onChange={(e) => setAdminCodeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') submitDeleteCarriedWithCode()
+                      if (e.key === 'Escape') { setDeleteCarriedConfirm(null); setAdminCodeInput('') }
+                    }}
+                    placeholder="كود الأدمن"
+                    className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-sm font-cairo focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/25"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminCode((v) => !v)}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-amber-400 transition"
+                    aria-label={showAdminCode ? 'إخفاء الكود' : 'إظهار الكود'}
+                  >
+                    {showAdminCode ? (
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24 4.24" /><path d="M1 1l22 22" /></svg>
+                    ) : (
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                    )}
+                  </button>
+                </div>
+                <div className="flex gap-3">
+                  <button type="button" onClick={submitDeleteCarriedWithCode} className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition">تأكيد</button>
+                  <button type="button" onClick={() => { setDeleteCarriedConfirm(null); setAdminCodeInput(''); setShowAdminCode(false) }} className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition">إلغاء</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
+          <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <h2 id="delete-dialog-title" className="text-lg font-bold text-amber-400 mb-3">
+              {deleteConfirm.step === 'confirm' ? 'حذف الصف' : 'كود الأدمن'}
+            </h2>
+            {deleteConfirm.step === 'confirm' ? (
+              <>
+                <p className="text-slate-300 text-sm leading-relaxed mb-4">هل تريد حذف الصف؟</p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={confirmDeleteRow}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition"
+                  >
+                    نعم
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirm(null)}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+                  >
+                    لا
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-slate-300 text-sm leading-relaxed mb-3">ادخل كود الأدمن</p>
+                <div className="relative mb-4">
+                  <input
+                    type={showAdminCode ? 'text' : 'password'}
+                    value={adminCodeInput}
+                    onChange={(e) => setAdminCodeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') submitDeleteWithCode()
+                      if (e.key === 'Escape') setDeleteConfirm(null)
+                    }}
+                    placeholder="كود الأدمن"
+                    className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-sm font-cairo focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/25"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminCode((v) => !v)}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-amber-400 transition"
+                    aria-label={showAdminCode ? 'إخفاء الكود' : 'إظهار الكود'}
+                    title={showAdminCode ? 'إخفاء' : 'إظهار'}
+                  >
+                    {showAdminCode ? (
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24 4.24" />
+                        <path d="M1 1l22 22" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={submitDeleteWithCode}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition"
+                  >
+                    تأكيد
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setDeleteConfirm(null); setAdminCodeInput(''); setShowAdminCode(false) }}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {deleteAllClosedConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-all-dialog-title">
+          <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <h2 id="delete-all-dialog-title" className="text-lg font-bold text-amber-400 mb-3">
+              {deleteAllClosedConfirm.step === 'confirm' ? 'حذف كل التقفيلات المغلقة' : 'كود الأدمن'}
+            </h2>
+            {deleteAllClosedConfirm.step === 'confirm' ? (
+              <>
+                <p className="text-slate-300 text-sm leading-relaxed mb-4">هل تريد حذف كل التقفيلات المغلقة؟</p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={confirmDeleteAllClosed}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition"
+                  >
+                    نعم
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteAllClosedConfirm(null)}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+                  >
+                    لا
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-slate-300 text-sm leading-relaxed mb-3">ادخل كود الأدمن</p>
+                <div className="relative mb-4">
+                  <input
+                    type={showAdminCode ? 'text' : 'password'}
+                    value={adminCodeInput}
+                    onChange={(e) => setAdminCodeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') submitDeleteAllClosedWithCode()
+                      if (e.key === 'Escape') setDeleteAllClosedConfirm(null)
+                    }}
+                    placeholder="كود الأدمن"
+                    className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-sm font-cairo focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/25"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminCode((v) => !v)}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-amber-400 transition"
+                    aria-label={showAdminCode ? 'إخفاء الكود' : 'إظهار الكود'}
+                    title={showAdminCode ? 'إخفاء' : 'إظهار'}
+                  >
+                    {showAdminCode ? (
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24 4.24" />
+                        <path d="M1 1l22 22" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={submitDeleteAllClosedWithCode}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition"
+                  >
+                    تأكيد
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setDeleteAllClosedConfirm(null); setAdminCodeInput(''); setShowAdminCode(false) }}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const NUM_FIELDS = ['cash', 'sentToTreasury', 'expenseCompensation', 'expenses', 'mada', 'visa', 'mastercard', 'bankTransfer', 'programBalanceCash', 'programBalanceBank'] as const
