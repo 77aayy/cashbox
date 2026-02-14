@@ -1,17 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { getRows, getRowById, addRow, updateRow, closeRow, getClosedForPrint, deleteRow, deleteAllClosedRows } from '../lib/storage'
-import { parseBankTransactionsExcel } from '../lib/excelParser'
+import { parseBankTransactionsExcel, type ExcelDetails } from '../lib/excelParser'
 import { computeBankVariance, computeCashVariance, computeVariance, formatCurrency, formatDateTime, filterByPreset, getGreeting, toLatinDigits } from '../lib/utils'
 import { ClosureRowComp } from '../components/ClosureRow'
 import { Calculator, type TransferField } from '../components/Calculator'
 import { CashCalculator } from '../components/CashCalculator'
 import { Toast } from '../components/Toast'
+import { useCashBoxRows } from '../hooks/useCashBoxRows'
+import { useClosingCountdown } from '../hooks/useClosingCountdown'
+import { useExpenseModal } from '../hooks/useExpenseModal'
 import type { ClosureRow, FilterPreset } from '../types'
 
 const ROWS_PER_PAGE = 5
 const UNDO_SECONDS = 10
-const ADMIN_CODE = 'ayman5255'
+
+/** كود الأدمن من متغير البيئة — لا يُخزَّن في الكود. */
+function getAdminCode(): string {
+  return typeof import.meta.env.VITE_ADMIN_CODE === 'string' ? import.meta.env.VITE_ADMIN_CODE : ''
+}
 
 const FILTERS: { id: FilterPreset; label: string }[] = [
   { id: 'today', label: 'اليوم' },
@@ -25,13 +32,19 @@ interface CashBoxProps {
 }
 
 export function CashBox({ name, onExit }: CashBoxProps) {
-  const [rows, setRows] = useState<ClosureRow[]>([])
+  const { rows, setRows, loadRows, debounceRef, rowDataRef } = useCashBoxRows(name)
+  const {
+    liveNow,
+    closingRowId,
+    setClosingRowId,
+    closingEndsAt,
+    setClosingEndsAt,
+    closingSecondsLeft,
+    setClosingSecondsLeft,
+  } = useClosingCountdown()
+
   const [filter, setFilter] = useState<FilterPreset>('today')
   const [currentPage, setCurrentPage] = useState(1)
-  const [liveNow, setLiveNow] = useState(() => new Date())
-  const [closingRowId, setClosingRowId] = useState<string | null>(null)
-  const [closingEndsAt, setClosingEndsAt] = useState<number | null>(null)
-  const [closingSecondsLeft, setClosingSecondsLeft] = useState(0)
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'warning' | 'info'; autoHideMs?: number } | null>(null)
   /** تأكيد الترحيل عندما يوجد رقم في الخانة (كاش أو مدى أو فيزا أو تحويل بنكي) */
   const [transferConfirm, setTransferConfirm] = useState<{ amount: number; currentValue: number; field: TransferField } | null>(null)
@@ -44,15 +57,6 @@ export function CashBox({ name, onExit }: CashBoxProps) {
   const [deleteCarriedConfirm, setDeleteCarriedConfirm] = useState<{ rowId: string; itemIndex: number; step: 'confirm' | 'code' } | null>(null)
   const [adminCodeInput, setAdminCodeInput] = useState('')
   const [showAdminCode, setShowAdminCode] = useState(false)
-  /** نافذة تصنيف المصروفات: صف + قائمة (مبلغ كنص أثناء التحرير، وصف) + عدد البنود المرحلة (مقفولة) */
-  const [expenseModal, setExpenseModal] = useState<{
-    rowId: string
-    items: { amount: string; description: string }[]
-    readOnly?: boolean
-    carriedCount?: number
-  } | null>(null)
-  /** نبض حقل الوصف عند الحفظ دون إدخال وصف (index البند) */
-  const [pulseExpenseDescriptionIndex, setPulseExpenseDescriptionIndex] = useState<number | null>(null)
   /** تأكيد الإغلاق عند وجود انحراف: انحراف الكاش/البنك — نعم يبدأ العد، لا يكمل التعديل */
   const [closeConfirmVariance, setCloseConfirmVariance] = useState<{
     rowId: string
@@ -61,9 +65,6 @@ export function CashBox({ name, onExit }: CashBoxProps) {
   } | null>(null)
   /** يُحدَّث عند انتهاء مهلة الإغلاق لتصفير الحاسبتين (سجل العمليات + حاسبة الكاش) للتجهيز لشفت جديد */
   const [calculatorsResetKey, setCalculatorsResetKey] = useState(0)
-  const debounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
-  /** أحدث حالة لكل صف لاستخدامها عند انتهاء الـ debounce حتى لا تُفقد حقول أخرى عند Tab السريع */
-  const rowDataRef = useRef<Record<string, ClosureRow>>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
   /** تاريخ بداية الفترة للاستيراد: يُعيّن قبل فتح منتقي الملف (إما آخر تقفيلة أو تاريخ يختاره المستخدم) */
   const uploadAfterDateRef = useRef<Date | null>(null)
@@ -71,10 +72,6 @@ export function CashBox({ name, onExit }: CashBoxProps) {
   const [uploadAskModal, setUploadAskModal] = useState(false)
   /** نافذة اختيار تاريخ ووقت بديل لبداية الفترة (عند "لا") */
   const [uploadCustomDateModal, setUploadCustomDateModal] = useState<{ date: string; time: string } | null>(null)
-  /** آخر قيمة مكتوبة في حقول المبلغ بنافذة المصروفات (لتفادي تثبيت القيمة القديمة عند إعادة الرسم) */
-  const expenseAmountRef = useRef<Record<number, string>>({})
-  /** تم التركيز لهذه النافذة (نركّز مرة واحدة عند الفتح فقط في أول حقل وصف) */
-  const expenseModalFocusedRowIdRef = useRef<string | null>(null)
   /** تفاصيل آخر استيراد إكسل (عمليات مدى/فيزا/ماستر/تحويل) لعرضها عند النقر على المبلغ */
   const [lastExcelDetails, setLastExcelDetails] = useState<ExcelDetails | null>(null)
   /** قائمة أسماء الموظفين من آخر استيراد (عند "أكثر من موظف") لعرضها عند النقر */
@@ -86,37 +83,15 @@ export function CashBox({ name, onExit }: CashBoxProps) {
   /** نافذة شرح سبب انحراف الكاش أو البنك (نوع + الصف) */
   const [varianceExplanationModal, setVarianceExplanationModal] = useState<{ type: 'cash' | 'bank'; row: ClosureRow } | null>(null)
 
-  const loadRows = useCallback(() => {
-    const newRows = getRows()
-    setRows(newRows)
-    newRows.forEach((r) => {
-      rowDataRef.current[r.id] = r
-    })
-  }, [])
-
-  useEffect(() => {
-    loadRows()
-    const list = getRows()
-    if (list.length === 0) {
-      addRow(name)
-      loadRows()
-    }
-    return () => {
-      Object.values(debounceRef.current).forEach(clearTimeout)
-      debounceRef.current = {}
-    }
-  }, [name, loadRows])
-
-  useEffect(() => {
-    const t = setInterval(() => {
-      const now = Date.now()
-      setLiveNow(new Date(now))
-      if (closingEndsAt !== null) {
-        setClosingSecondsLeft(Math.max(0, Math.ceil((closingEndsAt - now) / 1000)))
-      }
-    }, 1000)
-    return () => clearInterval(t)
-  }, [closingEndsAt])
+  const {
+    expenseModal,
+    setExpenseModal,
+    pulseExpenseDescriptionIndex,
+    setPulseExpenseDescriptionIndex,
+    openExpenseDetails,
+    expenseAmountRef,
+    expenseModalFocusedRowIdRef,
+  } = useExpenseModal(rows, rowDataRef)
 
   useEffect(() => {
     if (closingRowId === null || closingSecondsLeft > 0) return
@@ -309,49 +284,6 @@ export function CashBox({ name, onExit }: CashBoxProps) {
     fileInputRef.current?.click()
   }, [uploadCustomDateModal])
 
-  const openExpenseDetails = useCallback((rowId: string) => {
-    if (expenseModal?.rowId === rowId) return
-    expenseAmountRef.current = {}
-    setPulseExpenseDescriptionIndex(null)
-    const row = rows.find((r) => r.id === rowId) ?? rowDataRef.current[rowId]
-    const currentExpenses = (row?.expenses as number) ?? 0
-    let items: { amount: string; description: string }[] = row?.expenseItems?.length
-      ? row.expenseItems.map((it) => ({ amount: String(it.amount), description: it.description || '' }))
-      : [{ amount: currentExpenses ? String(currentExpenses) : '', description: '' }]
-    const isNonEmpty = (it: { amount: string; description: string }) =>
-      (Number(it.amount) || 0) !== 0 || String(it.description || '').trim() !== ''
-    const originalCarriedCount = (row?.carriedExpenseCount ?? 0) as number
-    const carriedNonEmptyCount = items.slice(0, originalCarriedCount).filter(isNonEmpty).length
-    items = items.filter(isNonEmpty)
-    let carriedCount = carriedNonEmptyCount
-    const readOnly = row?.status === 'closed'
-    if (!readOnly && items.length > 0) {
-      const last = items[items.length - 1]!
-      if (String(last.amount || '').trim() !== '' || String(last.description || '').trim() !== '') {
-        const sumItems = items.reduce((s, it) => s + (Number(it.amount) || 0), 0)
-        const diff = currentExpenses - sumItems
-        const newRowAmount = diff > 0 ? String(diff) : ''
-        items = [...items, { amount: newRowAmount, description: '' }]
-      }
-    }
-    if (!readOnly && items.length === 0) {
-      items = [{ amount: currentExpenses ? String(currentExpenses) : '', description: '' }]
-    }
-    setExpenseModal({ rowId, items, readOnly, carriedCount })
-  }, [rows, expenseModal?.rowId])
-
-  /** عند إغلاق نافذة المصروفات نصحّح العلم حتى يُعاد التركيز عند الفتح التالي */
-  useEffect(() => {
-    if (!expenseModal) expenseModalFocusedRowIdRef.current = null
-  }, [expenseModal])
-
-  /** إيقاف نبض حقل الوصف بعد 3 ثوانٍ */
-  useEffect(() => {
-    if (pulseExpenseDescriptionIndex === null) return
-    const t = setTimeout(() => setPulseExpenseDescriptionIndex(null), 3000)
-    return () => clearTimeout(t)
-  }, [pulseExpenseDescriptionIndex])
-
   /** مسح المصروف وتصنيفه فقط عند النقر على الحقل وهو فيه قيمة — إبقاء البنود المرحلة من الشفت السابق، مسح البنود الحالية فقط */
   const clearExpensesAndOpenModal = useCallback((rowId: string) => {
     const pending = debounceRef.current[rowId]
@@ -414,7 +346,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
 
   const submitDeleteCarriedWithCode = useCallback(() => {
     if (!deleteCarriedConfirm) return
-    if (adminCodeInput.trim() !== ADMIN_CODE) {
+    if (adminCodeInput.trim() !== getAdminCode()) {
       setToast({ msg: 'كود الأدمن غير صحيح', type: 'error' })
       return
     }
@@ -839,7 +771,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
 
   const submitDeleteWithCode = useCallback(() => {
     if (!deleteConfirm) return
-    if (adminCodeInput.trim() !== ADMIN_CODE) {
+    if (adminCodeInput.trim() !== getAdminCode()) {
       setToast({ msg: 'كود الأدمن غير صحيح', type: 'error' })
       return
     }
@@ -868,7 +800,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
 
   const submitDeleteAllClosedWithCode = useCallback(() => {
     if (!deleteAllClosedConfirm) return
-    if (adminCodeInput.trim() !== ADMIN_CODE) {
+    if (adminCodeInput.trim() !== getAdminCode()) {
       setToast({ msg: 'كود الأدمن غير صحيح', type: 'error' })
       return
     }
