@@ -1,21 +1,30 @@
 {
   "name": "cashbox-secure",
+  "private": true,
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist --dotfiles"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/ayman777adam/cashbox-backend.git"
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "xlsx": "^0.18.5"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/ayman777adam/cashbox-backend/issues"
-  },
-  "homepage": "https://github.com/ayman777adam/cashbox-backend#readme"
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "gh-pages": "^6.3.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "typescript": "~5.6.3",
+    "vite": "^5.4.11"
+  }
 }

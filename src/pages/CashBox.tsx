@@ -99,6 +99,8 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
   const [varianceExplanationModal, setVarianceExplanationModal] = useState<{ type: 'cash' | 'bank'; row: ClosureRow } | null>(null)
   /** تأكيد إفراغ الصف: عرض نعم/لا قبل الإفراغ */
   const [clearRowConfirmId, setClearRowConfirmId] = useState<string | null>(null)
+  /** تأكيد التعديل اليدوي لخانة تستقبل بيانات من الإكسل (مدى/فيزا/ماستر/تحويل بنكي) */
+  const [bankEditConfirm, setBankEditConfirm] = useState<{ rowId: string; field: keyof ClosureRow; oldValue: number; newValue: number } | null>(null)
 
   useEffect(() => {
     const btn = themeToggleRef.current
@@ -946,6 +948,18 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
     setBankTransferConfirm(null)
   }, [])
 
+  const handleBankEditConfirmYes = useCallback(() => {
+    if (!bankEditConfirm) return
+    handleUpdate(bankEditConfirm.rowId, bankEditConfirm.field, bankEditConfirm.newValue)
+    const label = transferFieldLabel(bankEditConfirm.field as TransferField)
+    setToast({ msg: `تم تعديل ${label} إلى ${formatCurrency(bankEditConfirm.newValue)}`, type: 'success' })
+    setBankEditConfirm(null)
+  }, [bankEditConfirm, handleUpdate])
+
+  const handleBankEditConfirmNo = useCallback(() => {
+    setBankEditConfirm(null)
+  }, [])
+
   const handleTransferConfirmYes = useCallback(() => {
     if (!transferConfirm || !firstActiveId) return
     handleUpdate(firstActiveId, transferConfirm.field, transferConfirm.amount)
@@ -976,9 +990,9 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
   )
 
   return (
-    <div className="min-h-screen page-bg-warm dark:bg-slate-900 text-stone-900 dark:text-slate-200 font-cairo page-bg-pattern">
-      <header className="sticky top-0 z-40 border-b border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-900/95 backdrop-blur shadow-sm">
-        <div className="mx-auto w-full max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+    <div className="min-h-screen min-h-[100dvh] page-bg-warm dark:bg-slate-900 text-stone-900 dark:text-slate-200 font-cairo page-bg-pattern flex flex-col">
+      <header className="sticky top-0 z-40 border-b border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-900/95 backdrop-blur shadow-sm safe-top">
+        <div className="mx-auto w-full max-w-[100%] max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             {(() => {
               const { label, kind } = getGreeting(liveNow)
@@ -1011,11 +1025,11 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
               }
               const isNight = kind === 'night'
               return (
-                <h1 className="flex items-center gap-2 py-1.5 px-3 rounded-xl border border-stone-300 dark:border-white/10 bg-stone-200 dark:bg-slate-800/50 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
-                  <span className={`flex items-center justify-center w-8 h-8 rounded-lg ${isNight ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300' : 'bg-teal-100 text-teal-700 dark:bg-amber-500/15 dark:text-amber-400'}`}>
+                <h1 className="flex items-center gap-1.5 sm:gap-2 py-1.5 px-2 sm:px-3 rounded-lg sm:rounded-xl border border-stone-300 dark:border-white/10 bg-stone-200 dark:bg-slate-800/50 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
+                  <span className={`flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg shrink-0 ${isNight ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300' : 'bg-teal-100 text-teal-700 dark:bg-amber-500/15 dark:text-amber-400'}`}>
                     {icons[kind]}
                   </span>
-                  <span className="text-sm font-semibold text-stone-800 dark:text-slate-200 tracking-tight flex items-center gap-1">
+                  <span className="text-xs sm:text-sm font-semibold text-stone-800 dark:text-slate-200 tracking-tight flex items-center gap-1 min-w-0 truncate max-w-[120px] sm:max-w-none">
                     <span className={isNight ? 'text-indigo-700 dark:text-indigo-300/90' : 'text-teal-700 dark:text-amber-400/95'}>{label}</span>
                     <span className="text-stone-600 dark:text-slate-400 font-normal">،</span>
                     <span className="text-stone-600 dark:text-slate-400 text-xs font-cairo text-right">{name}</span>
@@ -1142,14 +1156,13 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] px-4 py-4 flex flex-col gap-4">
+      <main className="mx-auto w-full max-w-[100%] max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] px-3 sm:px-4 py-3 sm:py-4 flex flex-col gap-3 sm:gap-4 flex-1 min-h-0">
         {/* جدول الصفوف — تصميم 2026: زجاجية خفيفة، تباين ناعم، تسلسل بصري واضح */}
         <div
-          className="rounded-3xl overflow-hidden flex flex-col border-2 border-stone-400 dark:border-amber-500/20 bg-stone-50 dark:bg-slate-800/30 backdrop-blur-sm shadow-[0_4px_24px_rgba(0,0,0,0.08),0_0_0_1px_rgba(41,37,36,0.12)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)]"
-          style={{ minHeight: ROWS_PER_PAGE * 52 + 48 + 56 + 44 }}
+          className="rounded-2xl sm:rounded-3xl overflow-hidden flex flex-col border-2 border-stone-400 dark:border-amber-500/20 bg-stone-50 dark:bg-slate-800/30 backdrop-blur-sm shadow-[0_4px_24px_rgba(0,0,0,0.08),0_0_0_1px_rgba(41,37,36,0.12)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] min-h-[280px] sm:min-h-[320px] max-h-[55vh] sm:max-h-[60vh]"
         >
-          <div className="overflow-x-auto flex-1 min-h-0 scrollbar-thin" style={{ scrollbarGutter: 'stable' }}>
-            <table className="w-full text-sm border-collapse table-fixed" style={{ tableLayout: 'fixed', width: '100%', minWidth: '100%' }}>
+          <div className="cashbox-table-scroll overflow-x-auto overflow-y-auto flex-1 min-h-0 max-h-[55vh] sm:max-h-[60vh] scrollbar-thin" style={{ scrollbarGutter: 'stable' }}>
+            <table className="w-full text-xs sm:text-sm border-collapse table-fixed" style={{ tableLayout: 'fixed', width: '100%', minWidth: '880px' }}>
               <colgroup>
                 <col style={{ width: '3%' }} />
                 <col style={{ width: '2.5%' }} />
@@ -1168,24 +1181,24 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                 <col style={{ width: '6.35%' }} />
                 <col style={{ width: '12%' }} />
               </colgroup>
-              <thead className="sticky top-0 z-10 bg-stone-100 dark:bg-amber-500/[0.08] backdrop-blur-md border-b-2 border-stone-500 dark:border-amber-500/20 shadow-md dark:shadow-[0_2px_8px_rgba(245,158,11,0.06)]">
-                <tr className="h-14">
-                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">تحديد</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">م</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">كاش</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo" title="مرسل للخزنة — يدخل في معادلة انحراف الكاش">مرسل للخزنة</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo" title="يُخصم من المصروفات في انحراف الكاش">تعويض مصروفات</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">المصروفات</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-teal-800 dark:text-teal-300 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">رصيد البرنامج كاش</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-bold text-red-700 dark:text-red-400 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 bg-red-100 dark:bg-red-500/10 font-cairo rounded-sm shadow-sm" title="خانة مهمة: الفرق بين المتوقع والفعلي للكاش">انحراف الكاش</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">مدى</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">فيزا</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">ماستر كارد</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-sky-700 dark:text-sky-300 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo" title="للعرض فقط — لا يدخل في بنك نزيل ولا انحراف البنك">تحويل بنكي</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-teal-800 dark:text-teal-300 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo" title="بنك نزيل = مدى + فيزا + ماستر كارد (تحويل بنكي للعرض فقط)">بنك نزيل</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">اجمالى الموازنه</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-bold text-red-700 dark:text-red-400 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 bg-red-100 dark:bg-red-500/10 font-cairo rounded-sm shadow-sm" title="خانة مهمة: الفرق بين بنك نزيل واجمالى الموازنه">انحراف البنك</th>
-                  <th className="px-1.5 py-3 text-center text-[10px] font-semibold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 overflow-hidden min-w-0 font-cairo">
+              <thead className="border-b-2 border-stone-500 dark:border-amber-500/20 [&_th]:sticky [&_th]:top-0 [&_th]:z-[11] [&_th]:bg-stone-100 [&_th]:dark:bg-amber-500/[0.08] [&_th]:backdrop-blur-md [&_th]:shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
+                <tr className="h-12 sm:h-14 bg-stone-100 dark:bg-amber-500/[0.08]">
+                  <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">تحديد</th>
+                  <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">م</th>
+                  <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">كاش</th>
+                  <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo" title="مرسل للخزنة — يدخل في معادلة انحراف الكاش">مرسل للخزنة</th>
+                  <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo" title="يُخصم من المصروفات في انحراف الكاش">تعويض مصروفات</th>
+                  <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">المصروفات</th>
+                  <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-semibold text-teal-800 dark:text-teal-300 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">رصيد البرنامج كاش</th>
+                  <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-bold text-red-700 dark:text-red-400 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 bg-red-100 dark:bg-red-500/10 font-cairo rounded-sm shadow-sm" title="خانة مهمة: الفرق بين المتوقع والفعلي للكاش">انحراف الكاش</th>
+                  <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">مدى</th>
+                  <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">فيزا</th>
+                  <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">ماستر كارد</th>
+                  <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-semibold text-sky-700 dark:text-sky-300 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo" title="للعرض فقط — لا يدخل في بنك نزيل ولا انحراف البنك">تحويل بنكي</th>
+                  <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-semibold text-teal-800 dark:text-teal-300 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo" title="بنك نزيل = مدى + فيزا + ماستر كارد (تحويل بنكي للعرض فقط)">بنك نزيل</th>
+                  <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">اجمالى الموازنه</th>
+                  <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-bold text-red-700 dark:text-red-400 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 bg-red-100 dark:bg-red-500/10 font-cairo rounded-sm shadow-sm" title="خانة مهمة: الفرق بين بنك نزيل واجمالى الموازنه">انحراف البنك</th>
+                  <th className="px-1 sm:px-1.5 py-2 sm:py-3 text-center text-[10px] font-semibold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 overflow-hidden min-w-0 font-cairo">
                     <div className="flex flex-col items-center justify-center gap-1 h-full min-w-0">
                       <span className="truncate max-w-full">الحالة / إجراءات</span>
                       <button
@@ -1225,17 +1238,19 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                     onExpenseCompensationExceeded={handleExpenseCompensationExceeded}
                     lastExcelDetails={lastExcelDetails}
                     onShowExcelDetails={(field, rowId) => setExcelDetailModal({ field, rowId })}
+                    onRequestConfirmBankEdit={lastExcelDetails ? (rowId, field, oldValue, newValue) => setBankEditConfirm({ rowId, field, oldValue, newValue }) : undefined}
                     onShowEmployeeNames={lastExcelEmployeeNamesList.length > 0 ? () => setShowEmployeeNamesModal(true) : undefined}
                     onShowVarianceExplanation={(type, row) => setVarianceExplanationModal({ type, row })}
                     currentUserName={name}
                     onClearRow={(id) => setClearRowConfirmId(id)}
+                    isStickyRows={r.id === firstActiveId || (!firstActiveId && idx === 0)}
                   />
                 ))}
               </tbody>
             </table>
           </div>
           {displayRows.length > ROWS_PER_PAGE && (
-            <div className="px-4 py-3 border-t border-stone-300 dark:border-white/[0.06] flex items-center justify-center gap-2 flex-wrap rounded-b-3xl bg-stone-200 dark:bg-slate-800/50 backdrop-blur-sm">
+            <div className="px-3 sm:px-4 py-2 sm:py-3 border-t border-stone-300 dark:border-white/[0.06] flex items-center justify-center gap-2 flex-wrap rounded-b-2xl sm:rounded-b-3xl bg-stone-200 dark:bg-slate-800/50 backdrop-blur-sm">
               <button
                 type="button"
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
@@ -1281,9 +1296,9 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                 <button
                   type="button"
                   onClick={handleUndoClose}
-                  className="btn-close-shift inline-flex items-center justify-center gap-3 px-7 py-3.5 rounded-2xl text-base font-cairo font-bold whitespace-nowrap border-2 border-teal-400 bg-teal-500 hover:bg-teal-600 text-white shadow-md dark:border-emerald-500/60 dark:bg-gradient-to-b dark:from-emerald-500/30 dark:to-emerald-600/20 dark:text-emerald-50 dark:shadow-[0_4px_24px_rgba(16,185,129,0.25)] dark:hover:from-emerald-500/40 dark:hover:to-emerald-600/30 dark:hover:shadow-[0_6px_28px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all select-none"
+                  className="btn-close-shift inline-flex items-center justify-center gap-2 sm:gap-3 px-4 sm:px-7 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl text-sm sm:text-base font-cairo font-bold whitespace-nowrap border-2 border-teal-400 bg-teal-500 hover:bg-teal-600 text-white shadow-md dark:border-emerald-500/60 dark:bg-gradient-to-b dark:from-emerald-500/30 dark:to-emerald-600/20 dark:text-emerald-50 dark:shadow-[0_4px_24px_rgba(16,185,129,0.25)] dark:hover:from-emerald-500/40 dark:hover:to-emerald-600/30 dark:hover:shadow-[0_6px_28px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all select-none touch-manipulation min-h-[44px]"
                 >
-                  <svg className="w-6 h-6 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M3 10h10a5 5 0 015 5v2" />
                     <path d="M7 15l-4-4 4-4" />
                   </svg>
@@ -1299,7 +1314,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
               type="button"
               onClick={() => handleCloseShift(firstActiveId)}
               disabled={!canCloseShift}
-              className={`btn-close-shift inline-flex items-center justify-center gap-3 px-8 py-3.5 min-w-[280px] rounded-2xl text-base font-cairo font-bold whitespace-nowrap border-2 select-none transition-all
+              className={`btn-close-shift inline-flex items-center justify-center gap-2 sm:gap-3 px-4 sm:px-8 py-2.5 sm:py-3.5 w-full sm:w-auto sm:min-w-[280px] rounded-xl sm:rounded-2xl text-sm sm:text-base font-cairo font-bold whitespace-nowrap border-2 select-none transition-all touch-manipulation min-h-[44px]
                 ${canCloseShift
                   ? 'bg-teal-500 hover:bg-teal-600 text-white border-teal-400 shadow-md dark:bg-gradient-to-b dark:from-amber-500/50 dark:to-amber-600/40 dark:text-amber-50 dark:border-amber-400 dark:shadow-[0_4px_24px_rgba(245,158,11,0.3)] dark:hover:from-amber-500/60 dark:hover:to-amber-600/50 dark:hover:shadow-[0_6px_28px_rgba(245,158,11,0.35)] hover:scale-[1.02] active:scale-[0.98]'
                   : 'opacity-60 bg-stone-200 text-stone-500 border-stone-300 dark:opacity-50 dark:bg-slate-800/40 dark:text-slate-500 dark:border-slate-600/50 cursor-not-allowed'
@@ -1318,7 +1333,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         </div>
 
         {/* الحاسبات — تُصفَّر عند انتهاء مهلة الإغلاق للتجهيز لشفت جديد */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(280px,380px)_1fr_1fr] gap-4 w-full max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] items-stretch min-h-[420px] [&>div]:min-h-[380px]">
+        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(260px,320px)_1fr_1fr] gap-3 sm:gap-4 w-full max-w-[100%] max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] items-stretch min-h-[320px] sm:min-h-[380px] xl:min-h-[420px] [&>div]:min-h-[280px] sm:[&>div]:min-h-[340px] xl:[&>div]:min-h-[380px]">
           <div className="min-h-0 flex flex-col">
             <Calculator key={`calculator-${calculatorsResetKey}`} onTransfer={handleTransferFromCalculator} hasActiveRow={!!firstActiveId} />
           </div>
@@ -1357,7 +1372,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         const title = `سجل التغيير — ${labels[field]}`
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default" role="dialog" aria-modal="true" aria-labelledby="excel-detail-title" onClick={() => setExcelDetailModal(null)}>
-            <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-sm w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-[95vw] sm:max-w-sm w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
               <h2 id="excel-detail-title" className="text-base font-bold text-teal-800 dark:text-amber-400 p-4 pb-2 border-b-2 border-stone-400 dark:border-white/10">
                 {title}
               </h2>
@@ -1383,10 +1398,9 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                       <div key={i} className="py-2 border-b border-stone-200 dark:border-white/5">
                         <div className="flex justify-between items-center gap-2 text-sm text-stone-800 dark:text-slate-300">
                           <div className="flex flex-col items-start gap-0.5 min-w-0">
-                            <span className="tabular-nums font-cairo">{formatDateTime(t.date)}</span>
-                            {t.employeeName && (
-                              <span className="text-xs text-stone-500 font-cairo">— {t.employeeName}</span>
-                            )}
+                            {t.employeeName ? (
+                              <span className="text-xs text-stone-500 font-cairo">{t.employeeName}</span>
+                            ) : null}
                           </div>
                           <span className="tabular-nums font-medium text-teal-600 dark:text-amber-200/95 shrink-0">{formatCurrency(t.amount)}</span>
                         </div>
@@ -1437,7 +1451,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         })
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default" role="dialog" aria-modal="true" aria-labelledby="employee-names-title" onClick={() => setShowEmployeeNamesModal(false)}>
-            <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-[95vw] sm:max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
               <h2 id="employee-names-title" className="text-base font-bold text-teal-700 dark:text-amber-400 p-4 pb-2 border-b border-white/10">
                 أسماء الموظفين في العمليات المستوردة
               </h2>
@@ -1486,7 +1500,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         const swapAmount = showSwapAlert ? Math.abs(cashVariance) : 0
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default" role="dialog" aria-modal="true" aria-labelledby="variance-explanation-title" onClick={() => setVarianceExplanationModal(null)}>
-            <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-[95vw] sm:max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
               <h2 id="variance-explanation-title" className="text-base font-bold text-teal-800 dark:text-amber-400 p-4 pb-2 border-b-2 border-stone-400 dark:border-white/10">
                 {title}
               </h2>
@@ -1662,6 +1676,35 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
               <button
                 type="button"
                 onClick={handleBankTransferConfirmNo}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+              >
+                لا
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bankEditConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="bank-edit-confirm-title">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <h2 id="bank-edit-confirm-title" className="text-lg font-bold text-teal-700 dark:text-amber-400 mb-3">
+              تعديل خانة {transferFieldLabel(bankEditConfirm.field as TransferField)}
+            </h2>
+            <p className="text-stone-600 dark:text-slate-300 text-sm leading-relaxed mb-4">
+              هل تريد تعديل الرقم من <span className="font-bold tabular-nums">{formatCurrency(bankEditConfirm.oldValue)}</span> إلى <span className="font-bold tabular-nums text-teal-600 dark:text-amber-400">{formatCurrency(bankEditConfirm.newValue)}</span>؟
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleBankEditConfirmYes}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition"
+              >
+                نعم
+              </button>
+              <button
+                type="button"
+                onClick={handleBankEditConfirmNo}
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
               >
                 لا

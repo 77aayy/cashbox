@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { toLatinDigits } from '../lib/utils'
 
 const DENOMS = [500, 200, 100, 50, 10, 5, 1]
@@ -14,6 +15,25 @@ export function CashCalculator({ onApplyToCash, hasActiveRow }: CashCalculatorPr
   const [counts, setCounts] = useState<Record<number, number>>(emptyCounts())
   const [lastTransferredCounts, setLastTransferredCounts] = useState<Record<number, number>>(emptyCounts())
   const [showLastTransferred, setShowLastTransferred] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [popoverPosition, setPopoverPosition] = useState<{ right: number; bottom: number } | null>(null)
+
+  useLayoutEffect(() => {
+    if (!showLastTransferred) {
+      setPopoverPosition(null)
+      return
+    }
+    const el = triggerRef.current
+    if (!el) {
+      setPopoverPosition(null)
+      return
+    }
+    const rect = el.getBoundingClientRect()
+    setPopoverPosition({
+      right: window.innerWidth - rect.right,
+      bottom: window.innerHeight - rect.top + 8,
+    })
+  }, [showLastTransferred])
 
   const grandTotal = DENOMS.reduce((sum, d) => sum + (counts[d] ?? 0) * d, 0)
   const lastTransferredTotal = DENOMS.reduce((sum, d) => sum + (lastTransferredCounts[d] ?? 0) * d, 0)
@@ -36,10 +56,10 @@ export function CashCalculator({ onApplyToCash, hasActiveRow }: CashCalculatorPr
   return (
     <div className="w-full h-full min-h-0 flex flex-col rounded-2xl overflow-hidden border-2 border-stone-400 dark:border-amber-500/20 bg-stone-50 dark:bg-slate-800/50 shadow-[0_4px_24px_rgba(0,0,0,0.08),0_0_0_1px_rgba(41,37,36,0.12)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm">
       {/* هيدر مطابق للآلة الحاسبة */}
-      <div className="relative bg-gradient-to-b from-teal-100 to-stone-200 dark:from-amber-500/15 dark:to-slate-800/60 px-4 py-3 border-b-2 border-teal-300 dark:border-amber-500/25 flex items-center justify-between gap-2 shrink-0 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
-        <div className="flex items-center gap-2">
-          <h3 className="flex items-center gap-2.5 text-base font-semibold text-teal-700 dark:text-amber-400 font-cairo tracking-wide">
-            <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-teal-100 dark:bg-amber-500/20 text-teal-600 dark:text-amber-400">
+      <div className="relative bg-gradient-to-b from-teal-100 to-stone-200 dark:from-amber-500/15 dark:to-slate-800/60 px-3 sm:px-4 py-2 sm:py-3 border-b-2 border-teal-300 dark:border-amber-500/25 flex items-center justify-between gap-2 shrink-0 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="flex items-center gap-2 sm:gap-2.5 text-sm sm:text-base font-semibold text-teal-700 dark:text-amber-400 font-cairo tracking-wide min-w-0">
+            <span className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-teal-100 dark:bg-amber-500/20 text-teal-600 dark:text-amber-400 shrink-0">
               <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <rect x="2" y="5" width="20" height="14" rx="2" />
                 <path d="M2 10h20M2 14h20M7 8v8M12 8v8M17 8v8" />
@@ -48,6 +68,7 @@ export function CashCalculator({ onApplyToCash, hasActiveRow }: CashCalculatorPr
             حاسبة الكاش
           </h3>
           <button
+            ref={triggerRef}
             type="button"
             onClick={() => setShowLastTransferred((v) => !v)}
             className={`p-1.5 rounded-lg transition shrink-0 ${showLastTransferred ? 'bg-teal-100 text-teal-700 dark:bg-amber-500/20 dark:text-amber-400' : 'text-stone-700 dark:text-slate-400 hover:text-teal-600 hover:bg-stone-300 dark:hover:text-amber-400 dark:hover:bg-white/5'}`}
@@ -62,10 +83,13 @@ export function CashCalculator({ onApplyToCash, hasActiveRow }: CashCalculatorPr
         </div>
         <span className="text-xs font-semibold text-stone-800 dark:text-amber-200/95 font-cairo">المجموع</span>
         <span className="text-sm font-semibold text-teal-700 dark:text-amber-400 font-cairo tabular-nums">{grandTotal > 0 ? `${grandTotal} ريال سعودي` : '— ريال سعودي'}</span>
-        {showLastTransferred && (
+        {showLastTransferred && popoverPosition && createPortal(
           <>
-            <div className="fixed inset-0 z-10" aria-hidden onClick={() => setShowLastTransferred(false)} />
-            <div className="absolute left-0 top-full mt-1 z-20 rounded-xl border-2 border-stone-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-xl py-2 px-3 text-xs font-cairo min-w-[160px]">
+            <div className="fixed inset-0 z-[100]" aria-hidden onClick={() => setShowLastTransferred(false)} />
+            <div
+              className="fixed z-[101] rounded-xl border-2 border-stone-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-xl py-2 px-3 text-xs font-cairo min-w-[160px] max-h-[280px] overflow-y-auto"
+              style={{ right: popoverPosition.right, bottom: popoverPosition.bottom }}
+            >
               <div className="font-semibold text-teal-700 dark:text-amber-400 mb-1.5">آخر عمليات رُحّلت إلى الكاش:</div>
               {lastTransferredTotal === 0 ? (
                 <p className="text-stone-600 dark:text-slate-400">لم يُرحّل أي مبلغ بعد</p>
@@ -89,22 +113,23 @@ export function CashCalculator({ onApplyToCash, hasActiveRow }: CashCalculatorPr
               )}
               <button type="button" onClick={() => setShowLastTransferred(false)} className="mt-2 w-full py-1 rounded bg-stone-300 dark:bg-slate-600 text-stone-800 dark:text-slate-200 text-[10px] font-medium">إغلاق</button>
             </div>
-          </>
+          </>,
+          document.body
         )}
       </div>
 
-      <div className="flex-1 flex flex-col p-4 min-h-0 overflow-hidden gap-4">
+      <div className="flex-1 flex flex-col p-3 sm:p-4 min-h-0 overflow-hidden gap-3 sm:gap-4">
         {/* صفّان: 4 + 3 خانات — نفس الحجم المريح */}
-        <div className="grid grid-cols-4 gap-4 shrink-0">
+        <div className="grid grid-cols-4 gap-2 sm:gap-5 shrink-0">
           {DENOMS.map((d) => {
             const total = (counts[d] ?? 0) * d
             return (
               <div
                 key={d}
-                className="flex flex-col items-center gap-3.5 rounded-xl bg-white dark:bg-slate-800/60 border-2 border-stone-400 dark:border-amber-500/15 px-5 py-4 shadow-md dark:shadow-[0_2px_8px_rgba(0,0,0,0.1)]"
+                className="flex flex-col items-center gap-2 sm:gap-4 rounded-lg sm:rounded-xl bg-white dark:bg-slate-800/60 border-2 border-stone-400 dark:border-amber-500/15 px-2 sm:px-6 py-3 sm:py-5 shadow-md dark:shadow-[0_2px_8px_rgba(0,0,0,0.1)] min-w-0"
               >
                 <span className="text-teal-700 dark:text-amber-400/90 text-xs font-cairo font-semibold tabular-nums">فئة النقد {d}</span>
-                <div className="flex items-center gap-2 w-full justify-center">
+                <div className="flex items-center gap-2.5 w-full justify-center px-1">
                   <button
                     type="button"
                     aria-label="نقص واحد"

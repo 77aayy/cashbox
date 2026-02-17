@@ -238,9 +238,9 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
       tabIndex={0}
       title="انقر هنا ثم استخدم لوحة المفاتيح. النتيجة لا تتغير عند الكتابة في الجدول."
     >
-      <div className="bg-gradient-to-b from-teal-100 to-stone-200 dark:from-amber-500/15 dark:to-slate-800/60 px-4 py-3 border-b-2 border-teal-400 dark:border-amber-500/25 flex items-center justify-between gap-2 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
-        <h3 className="flex items-center gap-2.5 text-base font-semibold text-teal-700 dark:text-amber-400 font-cairo tracking-wide">
-          <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-teal-100 dark:bg-amber-500/20 text-teal-600 dark:text-amber-400">
+      <div className="bg-gradient-to-b from-teal-100 to-stone-200 dark:from-amber-500/15 dark:to-slate-800/60 px-3 sm:px-4 py-2 sm:py-3 border-b-2 border-teal-400 dark:border-amber-500/25 flex items-center justify-between gap-2 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
+        <h3 className="flex items-center gap-2 sm:gap-2.5 text-sm sm:text-base font-semibold text-teal-700 dark:text-amber-400 font-cairo tracking-wide min-w-0">
+          <span className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-teal-100 dark:bg-amber-500/20 text-teal-600 dark:text-amber-400 shrink-0">
             <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <rect x="4" y="2" width="16" height="20" rx="2" />
             <path d="M6 6h12M6 10h12" />
@@ -268,7 +268,7 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
           </svg>
         </button>
       </div>
-      <div className="flex-1 flex flex-col p-4 space-y-3 min-h-0">
+      <div className="flex-1 flex flex-col p-3 sm:p-4 space-y-2 sm:space-y-3 min-h-0">
         <div className="rounded-xl bg-white dark:bg-slate-900/80 border-2 border-stone-400 dark:border-amber-500/30 p-2 shadow-inner dark:shadow-[0_0_18px_rgba(245,158,11,0.14)]">
           <div className="text-right text-stone-700 text-xs min-h-[16px] font-cairo tabular-nums select-none" aria-hidden="true">
             {expression || '\u200b'}
@@ -288,6 +288,7 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
               const amount = parseFloat(display) || 0
               if (!hasActiveRow || amount <= 0) return
               onTransfer(amount, CALCULATOR_TRANSFER_FIELD)
+              setHistory((h) => [`مرحّل → ${CALCULATOR_TRANSFER_LABEL}: ${amount}`, ...h].slice(0, 20))
               updateDisplay('0')
               setExpression('')
             }}

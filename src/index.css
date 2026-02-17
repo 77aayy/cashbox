@@ -7,6 +7,23 @@
   outline: none;
 }
 
+/* مرونة الشاشات: دعم الجوال والتابلت والكمبيوتر */
+html {
+  min-height: 100%;
+  min-height: 100dvh;
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  font-family: 'Cairo', sans-serif;
+  margin: 0;
+  min-height: 100%;
+  min-height: 100dvh;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  -webkit-font-smoothing: antialiased;
+}
+
 /* وضوح التركيز عند التنقل بالكيبورد — لون البراند (Turquoise #14b8a6) */
 button:focus-visible,
 a:focus-visible,
@@ -18,11 +35,9 @@ textarea:focus-visible,
   outline-offset: 2px;
 }
 
-body {
-  font-family: 'Cairo', sans-serif;
-  margin: 0;
-  -webkit-font-smoothing: antialiased;
-}
+/* مناطق آمنة للشاشات ذات النتوءات */
+.safe-top { padding-top: env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 
 /* خلفية الصفحة — وضع فاتح: لون كريمي دافئ يقلل الإبهار ويحسّن الرؤية */
 .page-bg-warm {
@@ -62,6 +77,27 @@ input[type="number"].cashbox-input::-webkit-inner-spin-button {
 input[type="number"].cashbox-input {
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+/* تثبيت أول 3 صفوف في جدول التقفيل: رؤوس الأعمدة + صف اسم الموظف + صف الإدخال النشط */
+.cashbox-table-scroll {
+  overflow-anchor: none; /* منع تأخير التمرير */
+}
+.cashbox-table-scroll thead th {
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 11;
+}
+.cashbox-table-scroll .sticky-label-row td {
+  position: -webkit-sticky;
+  position: sticky;
+  z-index: 9;
+}
+.cashbox-table-scroll .sticky-data-row td {
+  position: -webkit-sticky;
+  position: sticky;
+  z-index: 9;
 }
 
 @layer utilities {

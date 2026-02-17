@@ -27,6 +27,8 @@ interface ClosureRowProps {
   lastExcelDetails?: ExcelDetails | null
   /** فتح نافذة سجل التغيير (من إكسل / مرحّل / معدّل يدوياً) لعمود معيّن في صف معيّن */
   onShowExcelDetails?: (field: keyof ExcelDetails, rowId: string) => void
+  /** تأكيد التعديل اليدوي للخانات التي تستقبل بيانات من الإكسل (مدى/فيزا/ماستر/تحويل بنكي) */
+  onRequestConfirmBankEdit?: (rowId: string, field: keyof Row, oldValue: number, newValue: number) => void
   /** عند النقر على "أكثر من موظف" — فتح نافذة أسماء الموظفين */
   onShowEmployeeNames?: () => void
   /** عند النقر على انحراف الكاش أو انحراف البنك — فتح نافذة شرح سبب الانحراف (نوع + الصف) */
@@ -35,6 +37,8 @@ interface ClosureRowProps {
   currentUserName?: string
   /** إفراغ كل المدخلات في الصف النشط */
   onClearRow?: (id: string) => void
+  /** جعل صفّي التسمية والبيانات ثابتين عند التمرير (مثل الترويسة) */
+  isStickyRows?: boolean
 }
 
 const NUM_KEYS: (keyof Row)[] = ['cash', 'sentToTreasury', 'expenseCompensation', 'expenses', 'programBalanceCash', 'mada', 'visa', 'mastercard', 'bankTransfer', 'programBalanceBank']
@@ -57,10 +61,12 @@ export function ClosureRowComp({
   onExpenseCompensationExceeded,
   lastExcelDetails,
   onShowExcelDetails,
+  onRequestConfirmBankEdit,
   onShowEmployeeNames,
   onShowVarianceExplanation,
   currentUserName,
   onClearRow,
+  isStickyRows = false,
 }: ClosureRowProps) {
   const displayName = isFirstActive && currentUserName ? currentUserName : row.employeeName
   const bankVariance = useMemo(() => computeBankVariance(row), [
@@ -127,6 +133,8 @@ export function ClosureRowComp({
 
   const [programBalancePulse, setProgramBalancePulse] = useState(false)
   const [lockedPulseField, setLockedPulseField] = useState<keyof Row | null>(null)
+  /** تعديل مؤقت لحقل بنكي (مدى/فيزا/ماستر/تحويل) قبل التأكيد */
+  const [pendingBankEdit, setPendingBankEdit] = useState<{ field: keyof Row; value: number } | null>(null)
   const handleLockedClick = useCallback(
     (field: keyof Row) => {
       onLockedFieldClick?.()
@@ -188,16 +196,34 @@ export function ClosureRowComp({
     const isExpenses = field === 'expenses'
     const disabled = opts?.disabled ?? (!alwaysEnabledFields.includes(field) && !programBalanceFilled)
     const tabIndex = opts?.tabIndex ?? (field === 'programBalanceCash' && isFirstActive ? 0 : disabled ? -1 : 1)
+    const needsConfirmEdit = isBankWithDetails && onRequestConfirmBankEdit && ['mada', 'visa', 'mastercard', 'bankTransfer'].includes(field)
+    const displayVal = needsConfirmEdit && pendingBankEdit?.field === field
+      ? (pendingBankEdit.value === 0 ? '' : String(pendingBankEdit.value))
+      : (v === 0 ? '' : String(v))
     const inputEl = (
       <input
         type="text"
         inputMode="decimal"
-        value={v === 0 ? '' : String(v)}
+        value={displayVal}
         onChange={(e) => {
           const raw = toLatinDigits(e.target.value).replace(/[^\d.]/g, '')
           const dotIdx = raw.indexOf('.')
           const oneDot = dotIdx === -1 ? raw : raw.slice(0, dotIdx + 1) + raw.slice(dotIdx + 1).replace(/\./g, '')
-          handleNumChange(field, oneDot)
+          const parsed = parseFloat(oneDot) || 0
+          if (needsConfirmEdit) {
+            setPendingBankEdit({ field, value: parsed })
+          } else {
+            handleNumChange(field, oneDot)
+          }
+        }}
+        onBlur={() => {
+          if (needsConfirmEdit && pendingBankEdit?.field === field) {
+            const newVal = pendingBankEdit.value
+            setPendingBankEdit(null)
+            if (newVal !== v) {
+              onRequestConfirmBankEdit(row.id, field, v, newVal)
+            }
+          }
         }}
         dir="ltr"
         aria-label={field}
@@ -262,13 +288,17 @@ export function ClosureRowComp({
 
   const labelDateTime = isClosed && row.closedAt ? formatDateTime(row.closedAt) : formatDateTime(liveNow)
 
+  /* ثابتان عند التمرير: صف اسم الموظف تحت الترويسة (top = ارتفاع thead)، ثم صف الإدخال تحته (top = thead + label) */
+  const stickyLabelClass = isStickyRows ? 'sticky top-12 sm:top-14 z-[9] bg-stone-50 dark:bg-slate-800/95 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] border-b border-stone-300 dark:border-amber-500/15' : ''
+  const stickyDataClass = isStickyRows ? 'sticky top-[5rem] sm:top-[5.75rem] z-[9] bg-white dark:bg-slate-800/95 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] border-b border-stone-400 dark:border-amber-500/15' : ''
+
   return (
     <>
       {/* صف التسمية: اسم الموظف + التاريخ — شريط لوني يسار + حدود أوضح للوضع الفاتح */}
-      <tr data-row-id={row.id} className="bg-stone-50 dark:bg-amber-500/[0.06] border-l-2 border-l-teal-500 dark:border-l-amber-500/40 border-b-2 border-stone-400 dark:border-amber-500/15">
+      <tr data-row-id={row.id} className={`bg-stone-50 dark:bg-amber-500/[0.06] border-l-2 border-l-teal-500 dark:border-l-amber-500/40 border-b-2 border-stone-400 dark:border-amber-500/15 ${isStickyRows ? 'sticky-label-row' : ''}`}>
         <td
           colSpan={16}
-          className="py-1 px-3 align-middle text-[11px] font-semibold font-cairo text-stone-800 dark:text-amber-200/90 whitespace-nowrap"
+          className={`py-1 px-2 sm:px-3 align-middle text-[10px] sm:text-[11px] font-semibold font-cairo text-stone-800 dark:text-amber-200/90 whitespace-nowrap ${stickyLabelClass}`}
           style={{ lineHeight: 1.2, verticalAlign: 'middle' }}
         >
           <span className="inline-flex items-center gap-2 flex-wrap rounded-lg border-2 border-teal-400 dark:border-amber-500/25 bg-teal-50 dark:bg-amber-500/10 px-2.5 py-1 shadow-md dark:shadow-[0_2px_6px_rgba(245,158,11,0.08)]">
@@ -296,10 +326,10 @@ export function ClosureRowComp({
           isUndoPeriod
             ? 'bg-sky-100 dark:bg-sky-500/10 animate-pulse border-l-2 border-r-2 border-l-sky-400/50 border-r-sky-400/50 border-b-2 border-stone-400 dark:border-amber-500/15'
             : isClosed ? 'bg-stone-100 dark:bg-slate-800/30 border-b-2 border-stone-400 dark:border-amber-500/15' : 'bg-white dark:bg-slate-800/20 hover:bg-stone-50 dark:hover:bg-slate-800/35 border-b-2 border-stone-400 dark:border-amber-500/15 transition-colors'
-        }`}
+        } ${isStickyRows ? 'sticky-data-row' : ''}`}
         style={pulseDuration ? { animationDuration: pulseDuration } : undefined}
       >
-        <td className="p-1.5 text-center align-middle border-r-2 border-stone-400 dark:border-amber-500/10">
+        <td className={`p-1.5 text-center align-middle border-r-2 border-stone-400 dark:border-amber-500/10 ${stickyDataClass}`}>
           {onToggleSelect && (
             <div className="flex items-center justify-center">
             <button
@@ -323,22 +353,22 @@ export function ClosureRowComp({
             </div>
           )}
         </td>
-        <td className="p-1.5 text-center text-stone-800 dark:text-slate-500 text-sm font-medium font-cairo border-r-2 border-stone-400 dark:border-amber-500/10 align-middle tabular-nums">{rowNumber}</td>
+        <td className={`p-1.5 text-center text-stone-800 dark:text-slate-500 text-sm font-medium font-cairo border-r-2 border-stone-400 dark:border-amber-500/10 align-middle tabular-nums ${stickyDataClass}`}>{rowNumber}</td>
         {NUM_KEYS.slice(0, 4).map((k) => (
         <td
           key={k}
-          className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle ${lockedPulseField === k ? 'locked-cell-pulse' : ''}`}
+          className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle ${lockedPulseField === k ? 'locked-cell-pulse' : ''} ${stickyDataClass}`}
         >
           {renderNum(k)}
         </td>
       ))}
       <td
-        className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle ${programBalancePulse && isFirstActive ? 'program-balance-pulse-cell' : ''}`}
+        className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle ${programBalancePulse && isFirstActive ? 'program-balance-pulse-cell' : ''} ${stickyDataClass}`}
         title={!programBalanceFilled && isFirstActive ? 'لا يمكن الإدخال في الخانات الأخرى قبل إدخال رصيد البرنامج كاش هنا' : undefined}
       >
         {renderNum('programBalanceCash')}
       </td>
-      <td className={`p-1.5 text-center font-bold font-cairo align-middle border-2 border-red-300 dark:border-red-500/20 rounded-xl bg-red-50 dark:bg-slate-800/40 shadow-sm dark:shadow-[0_0_0_1px_rgba(248,113,113,0.08)] ${cashVarianceColor}`}>
+      <td className={`p-1.5 text-center font-bold font-cairo align-middle border-2 border-red-300 dark:border-red-500/20 rounded-xl bg-red-50 dark:bg-slate-800/40 shadow-sm dark:shadow-[0_0_0_1px_rgba(248,113,113,0.08)] ${cashVarianceColor} ${stickyDataClass}`}>
         {onShowVarianceExplanation ? (
           <button
             type="button"
@@ -356,12 +386,12 @@ export function ClosureRowComp({
       {NUM_KEYS.slice(5, 9).map((k) => (
         <td
           key={k}
-          className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle ${lockedPulseField === k ? 'locked-cell-pulse' : ''}`}
+          className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle ${lockedPulseField === k ? 'locked-cell-pulse' : ''} ${stickyDataClass}`}
         >
           {renderNum(k)}
         </td>
       ))}
-      <td className="p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle bg-stone-300 dark:bg-slate-800/40">
+      <td className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle bg-stone-300 dark:bg-slate-800/40 ${stickyDataClass}`}>
         <span className="block py-1.5 text-sm text-teal-700 dark:text-emerald-400/95 font-semibold font-cairo tabular-nums">
           {(() => {
             const total = row.mada + row.visa + row.mastercard
@@ -369,10 +399,10 @@ export function ClosureRowComp({
           })()}
         </span>
       </td>
-      <td className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle ${lockedPulseField === 'programBalanceBank' ? 'locked-cell-pulse' : ''}`}>
+      <td className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle ${lockedPulseField === 'programBalanceBank' ? 'locked-cell-pulse' : ''} ${stickyDataClass}`}>
         {renderNum('programBalanceBank')}
       </td>
-      <td className={`p-1.5 text-center font-bold font-cairo align-middle border-2 border-red-300 dark:border-red-500/20 rounded-xl bg-red-50 dark:bg-slate-800/40 shadow-sm dark:shadow-[0_0_0_1px_rgba(248,113,113,0.08)] ${bankVarianceColor}`}>
+      <td className={`p-1.5 text-center font-bold font-cairo align-middle border-2 border-red-300 dark:border-red-500/20 rounded-xl bg-red-50 dark:bg-slate-800/40 shadow-sm dark:shadow-[0_0_0_1px_rgba(248,113,113,0.08)] ${bankVarianceColor} ${stickyDataClass}`}>
         {onShowVarianceExplanation ? (
           <button
             type="button"
@@ -387,7 +417,7 @@ export function ClosureRowComp({
           <span className="block py-1">{bankVariance === 0 ? '—' : formatCurrency(bankVariance)}</span>
         )}
       </td>
-      <td className="p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle overflow-hidden min-w-0">
+      <td className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle overflow-hidden min-w-0 ${stickyDataClass}`}>
         {isClosed ? (
           <div className="flex flex-row items-center justify-center gap-1 flex-wrap min-w-0 w-full">
             <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-500/15 border border-emerald-300 dark:border-emerald-500/25 text-[9px] font-medium text-emerald-700 dark:text-emerald-400/95 font-cairo whitespace-nowrap shrink-0">
