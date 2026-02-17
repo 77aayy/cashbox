@@ -14,24 +14,24 @@ interface ToastProps {
 
 const styles: Record<ToastType, { bg: string; border: string; icon: string }> = {
   success: {
-    bg: 'bg-emerald-500/15',
-    border: 'border-emerald-500/40',
-    icon: 'text-emerald-400',
+    bg: 'bg-emerald-100 dark:bg-emerald-500/15',
+    border: 'border-emerald-400 dark:border-emerald-500/40',
+    icon: 'text-emerald-700 dark:text-emerald-400',
   },
   error: {
-    bg: 'bg-red-500/15',
-    border: 'border-red-500/40',
-    icon: 'text-red-400',
+    bg: 'bg-red-100 dark:bg-red-500/15',
+    border: 'border-red-400 dark:border-red-500/40',
+    icon: 'text-red-700 dark:text-red-400',
   },
   warning: {
-    bg: 'bg-amber-500/15',
-    border: 'border-amber-500/40',
-    icon: 'text-amber-400',
+    bg: 'bg-amber-100 dark:bg-amber-500/15',
+    border: 'border-amber-400 dark:border-amber-500/40',
+    icon: 'text-amber-700 dark:text-amber-400',
   },
   info: {
-    bg: 'bg-sky-500/15',
-    border: 'border-sky-500/40',
-    icon: 'text-sky-400',
+    bg: 'bg-sky-100 dark:bg-sky-500/15',
+    border: 'border-sky-400 dark:border-sky-500/40',
+    icon: 'text-sky-700 dark:text-sky-400',
   },
 }
 
@@ -80,16 +80,16 @@ export function Toast({ message, type, onClose, position = 'bottom', autoHideMs 
   return (
     <div
       role="alert"
-      className={`${positionClass} flex items-center gap-3 px-4 py-3 rounded-2xl border ${s.bg} ${s.border} shadow-xl shadow-black/20 backdrop-blur-md min-w-[200px] max-w-[90vw]`}
+      className={`${positionClass} flex items-center gap-3 px-4 py-3 rounded-2xl border ${s.bg} ${s.border} shadow-xl shadow-black/10 dark:shadow-black/20 backdrop-blur-md min-w-[200px] max-w-[90vw]`}
     >
       <span className={s.icon} aria-hidden="true">
         {icons[type]}
       </span>
-      <span className="font-cairo text-sm text-slate-200 flex-1">{message}</span>
+      <span className="font-cairo text-sm text-slate-800 dark:text-slate-200 flex-1">{message}</span>
       <button
         type="button"
         onClick={onClose}
-        className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/10 transition focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-800 focus-visible:outline-none"
+        className="p-1 rounded-lg text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-300 dark:hover:bg-white/10 transition focus-visible:ring-2 focus-visible:ring-teal-400 dark:focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-800 focus-visible:outline-none"
         aria-label="إغلاق"
       >
         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

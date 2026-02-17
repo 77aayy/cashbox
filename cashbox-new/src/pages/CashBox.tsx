@@ -11,9 +11,13 @@ import { useCashBoxRows } from '../hooks/useCashBoxRows'
 import { useClosingCountdown } from '../hooks/useClosingCountdown'
 import { useExpenseModal } from '../hooks/useExpenseModal'
 import type { ClosureRow, FilterPreset } from '../types'
+import type { ThemeMode } from '../App'
+import { toggleTheme as doToggleTheme } from '../lib/theme'
 
 const ROWS_PER_PAGE = 5
 const UNDO_SECONDS = 10
+/** أقصى فرق (ريال) بين انحراف الكاش وانحراف البنك لاعتبارها "نفس القيمة" وتنبيه احتمال الخلط نقداً ↔ شبكة */
+const VARIANCE_SWAP_TOLERANCE_SAR = 2
 
 /** كود الأدمن من متغير البيئة — لا يُخزَّن في الكود. */
 function getAdminCode(): string {
@@ -29,9 +33,16 @@ const FILTERS: { id: FilterPreset; label: string }[] = [
 interface CashBoxProps {
   name: string
   onExit: () => void
+  theme: ThemeMode
+  onToggleTheme: () => void
 }
 
-export function CashBox({ name, onExit }: CashBoxProps) {
+function handleThemeToggle() {
+  doToggleTheme()
+}
+
+export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: CashBoxProps) {
+  const themeToggleRef = useRef<HTMLButtonElement>(null)
   const { rows, setRows, loadRows, debounceRef, rowDataRef } = useCashBoxRows(name)
   const {
     liveNow,
@@ -66,12 +77,6 @@ export function CashBox({ name, onExit }: CashBoxProps) {
   /** يُحدَّث عند انتهاء مهلة الإغلاق لتصفير الحاسبتين (سجل العمليات + حاسبة الكاش) للتجهيز لشفت جديد */
   const [calculatorsResetKey, setCalculatorsResetKey] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  /** تاريخ بداية الفترة للاستيراد: يُعيّن قبل فتح منتقي الملف (إما آخر تقفيلة أو تاريخ يختاره المستخدم) */
-  const uploadAfterDateRef = useRef<Date | null>(null)
-  /** نافذة: اعتماد تاريخ ووقت آخر تقفيلة؟ نعم → رفع مباشر، لا → اختيار تاريخ ووقت بديل */
-  const [uploadAskModal, setUploadAskModal] = useState(false)
-  /** نافذة اختيار تاريخ ووقت بديل لبداية الفترة (عند "لا") */
-  const [uploadCustomDateModal, setUploadCustomDateModal] = useState<{ date: string; time: string } | null>(null)
   /** تفاصيل آخر استيراد إكسل (عمليات مدى/فيزا/ماستر/تحويل) لعرضها عند النقر على المبلغ */
   const [lastExcelDetails, setLastExcelDetails] = useState<ExcelDetails | null>(null)
   /** قائمة أسماء الموظفين من آخر استيراد (عند "أكثر من موظف") لعرضها عند النقر */
@@ -82,6 +87,19 @@ export function CashBox({ name, onExit }: CashBoxProps) {
   const [showEmployeeNamesModal, setShowEmployeeNamesModal] = useState(false)
   /** نافذة شرح سبب انحراف الكاش أو البنك (نوع + الصف) */
   const [varianceExplanationModal, setVarianceExplanationModal] = useState<{ type: 'cash' | 'bank'; row: ClosureRow } | null>(null)
+
+  useEffect(() => {
+    const btn = themeToggleRef.current
+    if (!btn) return
+    const handler = (e: Event) => {
+      e.preventDefault()
+      e.stopPropagation()
+      e.stopImmediatePropagation()
+      handleThemeToggle()
+    }
+    btn.addEventListener('click', handler, true)
+    return () => btn.removeEventListener('click', handler, true)
+  }, [])
 
   const {
     expenseModal,
@@ -117,7 +135,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
       ? { ...fromStorage, ...fromState, id: rowId, status: 'active' as const }
       : fromState
     const v = computeVariance(merged)
-    closeRow(rowId, { ...merged, variance: v })
+    closeRow(rowId, { ...merged, employeeName: name, variance: v })
     // ترحيل المصروفات = الفرق فقط (مصروفات − تعويض). لو تعويض 200 ومصروفات 500 تُنقل 300 فقط. لو تعويض = مصروفات لا يُنقل مبلغ.
     const closedExpenses = merged.expenses ?? 0
     const closedCompensation = merged.expenseCompensation ?? 0
@@ -192,12 +210,6 @@ export function CashBox({ name, onExit }: CashBoxProps) {
         setToast({ msg: 'لا يوجد صف نشط لملء البيانات', type: 'warning' })
         return
       }
-      const afterDate = uploadAfterDateRef.current
-      uploadAfterDateRef.current = null
-      if (!afterDate) {
-        setToast({ msg: 'يجب وجود صف مغلق أولاً أو اختيار تاريخ ووقت بداية الفترة', type: 'warning' })
-        return
-      }
       let buffer: ArrayBuffer
       try {
         buffer = await file.arrayBuffer()
@@ -205,6 +217,8 @@ export function CashBox({ name, onExit }: CashBoxProps) {
         setToast({ msg: 'تعذر قراءة الملف', type: 'error' })
         return
       }
+      /** استخراج قيم من كل التقرير (بدون فلتر تاريخ) */
+      const afterDate = new Date(0)
       const { sums, counts, details, employeeName: excelEmployeeName, employeeNamesList, error } = parseBankTransactionsExcel(buffer, afterDate)
       if (error) {
         setToast({ msg: error, type: 'error' })
@@ -219,14 +233,14 @@ export function CashBox({ name, onExit }: CashBoxProps) {
         updateRow(active.id, rowDataRef.current[active.id] ?? active)
       }
       const current = (rowDataRef.current[active.id] ?? active) as ClosureRow
-      const total = sums.cash + sums.mada + sums.visa + sums.mastercard + sums.bankTransfer
+      /** استخراج فقط: مدى، فيزا، ماستر كارد، تحويل بنكي — لا نغيّر الكاش من التقرير */
       const filled = {
-        cash: sums.cash,
         mada: sums.mada,
         visa: sums.visa,
         mastercard: sums.mastercard,
         bankTransfer: sums.bankTransfer,
       }
+      const totalExtracted = sums.mada + sums.visa + sums.mastercard
       const employeeName = (excelEmployeeName && excelEmployeeName.trim() !== '') ? excelEmployeeName.trim() : current.employeeName
       const nextRow = { ...current, ...filled, employeeName, variance: computeVariance({ ...current, ...filled, employeeName }) }
       updateRow(active.id, nextRow)
@@ -234,55 +248,22 @@ export function CashBox({ name, onExit }: CashBoxProps) {
       setRows((prev) => prev.map((r) => (r.id === active.id ? nextRow : r)))
       loadRows()
       const parts: string[] = []
-      if (counts.mada > 0) parts.push(`${counts.mada} مدى (${formatCurrency(sums.mada)})`)
-      if (counts.visa > 0) parts.push(`${counts.visa} فيزا (${formatCurrency(sums.visa)})`)
-      if (counts.mastercard > 0) parts.push(`${counts.mastercard} ماستر (${formatCurrency(sums.mastercard)})`)
-      if (counts.bankTransfer > 0) parts.push(`${counts.bankTransfer} تحويل بنكي (${formatCurrency(sums.bankTransfer)})`)
-      if (counts.cash > 0) parts.push(`${counts.cash} كاش (${formatCurrency(sums.cash)})`)
-      const detail = parts.length > 0 ? parts.join(' — ') + ` — المجموع: ${formatCurrency(total)}` : ''
+      if (counts.mada > 0) parts.push(`مدى ${formatCurrency(sums.mada)}`)
+      if (counts.visa > 0) parts.push(`فيزا ${formatCurrency(sums.visa)}`)
+      if (counts.mastercard > 0) parts.push(`ماستر كارد ${formatCurrency(sums.mastercard)}`)
+      if (counts.bankTransfer > 0) parts.push(`تحويل بنكي ${formatCurrency(sums.bankTransfer)}`)
+      const detail = parts.length > 0 ? parts.join(' — ') + ` — المجموع: ${formatCurrency(totalExtracted)}` : ''
       setToast({
-        msg: total > 0 ? `تم استيراد عمليات بعد وقت البداية. ${detail}` : 'لم يُعثر على إدخالات بعد تاريخ/وقت البداية',
-        type: total > 0 ? 'success' : 'info',
+        msg: totalExtracted > 0 ? `تم استخراج: ${detail}` : 'لم يُعثر على مدى/فيزا/ماستر كارد/تحويل بنكي في الملف',
+        type: totalExtracted > 0 ? 'success' : 'info',
       })
     },
     [firstActiveRow, loadRows]
   )
 
   const handleUploadFilesClick = useCallback(() => {
-    if (lastClosedRow?.closedAt) {
-      setUploadAskModal(true)
-    } else {
-      const d = new Date()
-      setUploadCustomDateModal({
-        date: d.toISOString().slice(0, 10),
-        time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
-      })
-    }
-  }, [lastClosedRow])
-
-  const handleUploadUseLastClosure = useCallback(() => {
-    if (!lastClosedRow?.closedAt) return
-    uploadAfterDateRef.current = new Date(lastClosedRow.closedAt)
-    setUploadAskModal(false)
     fileInputRef.current?.click()
-  }, [lastClosedRow])
-
-  const handleUploadPickCustomDate = useCallback(() => {
-    if (!lastClosedRow?.closedAt) return
-    const d = new Date(lastClosedRow.closedAt)
-    const date = d.toISOString().slice(0, 10)
-    const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-    setUploadAskModal(false)
-    setUploadCustomDateModal({ date, time })
-  }, [lastClosedRow])
-
-  const handleUploadCustomDateConfirm = useCallback(() => {
-    if (!uploadCustomDateModal) return
-    const after = new Date(`${uploadCustomDateModal.date}T${uploadCustomDateModal.time}`)
-    uploadAfterDateRef.current = after
-    setUploadCustomDateModal(null)
-    fileInputRef.current?.click()
-  }, [uploadCustomDateModal])
+  }, [])
 
   /** مسح المصروف وتصنيفه فقط عند النقر على الحقل وهو فيه قيمة — إبقاء البنود المرحلة من الشفت السابق، مسح البنود الحالية فقط */
   const clearExpensesAndOpenModal = useCallback((rowId: string) => {
@@ -502,7 +483,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
   }, [])
 
   const printRows = useCallback(
-    (list: ClosureRow[], title: string) => {
+    (list: ClosureRow[], title: string, opts?: { firstActiveId: string | null; currentUserName: string }) => {
       if (list.length === 0) {
         setToast({ msg: 'لا توجد تقفيلات للطباعة', type: 'warning' })
         return
@@ -512,8 +493,11 @@ export function CashBox({ name, onExit }: CashBoxProps) {
         setToast({ msg: 'السماح بالنوافذ المنبثقة للطباعة', type: 'warning' })
         return
       }
+      const { firstActiveId: optsFirstActiveId, currentUserName } = opts ?? {}
       const pagesHtml = list
         .map((r, idx) => {
+          const rawName = r.status === 'closed' ? r.employeeName : (optsFirstActiveId && r.id === optsFirstActiveId && currentUserName ? currentUserName : r.employeeName)
+          const employeeNameForPrint = (rawName ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
           const bankTotal = r.mada + r.visa + r.mastercard
           const bankVariance = computeBankVariance(r)
           const cashVariance = computeCashVariance(r)
@@ -536,7 +520,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
             <div class="page" ${pageBreakStyle ? `style="${pageBreakStyle}"` : ''}>
               <header class="page-header">
                 <h1 class="page-title">تقرير تقفيلة</h1>
-                <p class="page-sub">${r.employeeName}</p>
+                <p class="page-sub">${employeeNameForPrint}</p>
                 <p class="page-time">${r.closedAt ? formatDateTime(r.closedAt) : '—'}</p>
               </header>
               <div class="grid">
@@ -558,15 +542,18 @@ export function CashBox({ name, onExit }: CashBoxProps) {
                     <div class="row"><span class="label">فيزا</span><span class="val">${formatCurrency(r.visa)}</span></div>
                     <div class="row"><span class="label">ماستر كارد</span><span class="val">${formatCurrency(r.mastercard)}</span></div>
                     <div class="row"><span class="label">تحويل بنكي</span><span class="val">${formatCurrency(r.bankTransfer)}</span></div>
-                    <div class="row"><span class="label">إجمالي مدى+فيزا+ماستر</span><span class="val total">${formatCurrency(bankTotal)}</span></div>
-                    <div class="row"><span class="label">اجمالى الموازنة</span><span class="val">${formatCurrency(r.programBalanceBank)}</span></div>
+                    <div class="row"><span class="label">بنك نزيل (مدى+فيزا+ماستر)</span><span class="val total">${formatCurrency(bankTotal)}</span></div>
+                    <div class="row"><span class="label">اجمالى الموازنه</span><span class="val">${formatCurrency((r.programBalanceBank as number) ?? 0)}</span></div>
                     <div class="row highlight variance-row"><span class="label">انحراف البنك</span><span class="val ${bankVarClass}">${formatCurrency(bankVariance)}</span></div>
                   </div>
                 </div>
               </div>
               ${expenseDetails}
               ${notesHtml}
-              <footer class="page-footer">تاريخ الطباعة: ${formatDateTime(new Date())} ${list.length > 1 ? ` — تقفيلة ${idx + 1} من ${list.length}` : ''}</footer>
+              <footer class="page-footer">
+                <p class="footer-formulas">بنك نزيل = مدى + فيزا + ماستر كارد (تحويل بنكي للعرض فقط) — انحراف البنك = بنك نزيل − اجمالى الموازنه — انحراف الكاش = (كاش + مرسل للخزنة + مصروفات فعّالة) − رصيد البرنامج كاش</p>
+                <p>تاريخ الطباعة: ${formatDateTime(new Date())} ${list.length > 1 ? ` — تقفيلة ${idx + 1} من ${list.length}` : ''}</p>
+              </footer>
             </div>`
         })
         .join('')
@@ -579,14 +566,14 @@ export function CashBox({ name, onExit }: CashBoxProps) {
             <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
             <style>
               * { box-sizing: border-box; margin: 0; padding: 0; }
-              @page { size: A4 portrait; margin: 14mm; }
+              @page { size: A4 portrait; margin: 10mm; }
               html, body {
                 font-family: 'Cairo', sans-serif;
                 background: #fff;
                 color: #1e293b;
-                font-size: 15px;
-                line-height: 1.4;
-                padding: 12px;
+                font-size: 11px;
+                line-height: 1.25;
+                padding: 8px;
                 margin: 0;
                 height: auto;
               }
@@ -598,6 +585,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
                   min-height: unset !important;
                   overflow: visible !important;
                   background: #fff;
+                  font-size: 10px !important;
                 }
                 .page {
                   box-shadow: none !important;
@@ -611,79 +599,79 @@ export function CashBox({ name, onExit }: CashBoxProps) {
               .page {
                 width: 100%;
                 max-width: 210mm;
-                margin: 0 auto 20px;
-                padding: 0 10px 16px;
+                margin: 0 auto 12px;
+                padding: 0 8px 10px;
                 background: #fff;
-                box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+                box-shadow: 0 2px 8px rgba(0,0,0,0.06);
               }
               .page-header {
                 text-align: center;
-                padding: 20px 0 18px;
-                border-bottom: 2px solid #0f172a;
-                margin-bottom: 18px;
+                padding: 8px 0 6px;
+                border-bottom: 1px solid #0f172a;
+                margin-bottom: 8px;
               }
               .page-title {
-                font-size: 1.5rem;
+                font-size: 1.15rem;
                 font-weight: 700;
                 color: #0f172a;
-                margin-bottom: 4px;
-              }
-              .page-sub {
-                font-size: 1.1rem;
-                font-weight: 600;
-                color: #334155;
                 margin-bottom: 2px;
               }
+              .page-sub {
+                font-size: 0.95rem;
+                font-weight: 600;
+                color: #334155;
+                margin-bottom: 1px;
+              }
               .page-time {
-                font-size: 0.9rem;
+                font-size: 0.8rem;
                 color: #64748b;
               }
               .grid {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 16px;
-                margin-bottom: 16px;
+                gap: 10px;
+                margin-bottom: 8px;
               }
               .block {
                 border: 1px solid #e2e8f0;
-                border-radius: 8px;
+                border-radius: 4px;
                 overflow: hidden;
               }
               .block-title {
                 background: #f1f5f9;
-                padding: 10px 12px;
+                padding: 4px 8px;
                 font-weight: 700;
-                font-size: 0.95rem;
+                font-size: 0.8rem;
                 color: #334155;
                 border-bottom: 1px solid #e2e8f0;
               }
               .block-body {
-                padding: 10px 12px;
+                padding: 4px 8px;
                 background: #fff;
               }
               .block .row {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 6px 0;
+                padding: 2px 0;
                 border-bottom: 1px solid #f1f5f9;
-                font-size: 0.9rem;
+                font-size: 0.8rem;
               }
               .block .row:last-child { border-bottom: none; }
-              .block .row.highlight { font-weight: 700; background: #f8fafc; margin: 4px -12px -4px; padding: 8px 12px; }
+              .block .row.highlight { font-weight: 700; background: #f8fafc; margin: 2px -8px -2px; padding: 4px 8px; }
               .block .row.variance-row {
-                margin: 8px -12px -4px;
-                padding: 12px 12px;
+                margin: 4px -8px -2px;
+                padding: 6px 8px;
                 background: #f1f5f9;
-                border-top: 2px solid #cbd5e1;
-                font-size: 1.05rem;
+                border-top: 1px solid #cbd5e1;
+                font-size: 0.9rem;
               }
               .block .row.variance-row .label {
-                font-size: 1.1rem;
+                font-size: 0.9rem;
                 font-weight: 800;
                 color: #0f172a;
               }
-              .block .row.variance-row .val { font-size: 1.1rem; font-weight: 800; }
+              .block .row.variance-row .val { font-size: 0.9rem; font-weight: 800; }
               .block .label { color: #475569; }
               .block .val {
                 font-variant-numeric: tabular-nums;
@@ -694,24 +682,37 @@ export function CashBox({ name, onExit }: CashBoxProps) {
               .block .val.variance.pos { color: #059669; }
               .block .val.variance.neg { color: #dc2626; }
               .expenses-detail, .notes-block {
-                margin-top: 12px;
+                margin-top: 6px;
                 border: 1px solid #e2e8f0;
-                border-radius: 8px;
+                border-radius: 4px;
                 overflow: hidden;
               }
+              .expenses-detail .block-title, .notes-block .block-title {
+                padding: 3px 8px;
+                font-size: 0.75rem;
+              }
+              .expenses-detail .block-body, .notes-block .block-body {
+                padding: 3px 8px;
+              }
               .expense-item {
-                padding: 5px 12px;
-                font-size: 0.88rem;
+                padding: 2px 8px;
+                font-size: 0.75rem;
                 border-bottom: 1px solid #f1f5f9;
               }
               .expense-item:last-child { border-bottom: none; }
               .page-footer {
-                margin-top: 20px;
-                padding-top: 12px;
+                margin-top: 8px;
+                padding-top: 6px;
                 border-top: 1px solid #e2e8f0;
-                font-size: 0.8rem;
+                font-size: 0.7rem;
                 color: #64748b;
                 text-align: center;
+              }
+              .page-footer .footer-formulas {
+                font-size: 0.6rem;
+                color: #94a3b8;
+                margin-bottom: 3px;
+                line-height: 1.3;
               }
             </style>
           </head>
@@ -729,8 +730,8 @@ export function CashBox({ name, onExit }: CashBoxProps) {
   const handlePrintAll = useCallback(() => {
     const limit = filter === 'today' ? 50 : filter === 'yesterday' ? 100 : 200
     const list = filterByPreset(getClosedForPrint(limit), filter)
-    printRows(list, `تقرير التقفيلات — ${filter === 'today' ? 'اليوم' : filter === 'yesterday' ? 'أمس' : 'الأسبوع الماضي'}`)
-  }, [filter, printRows])
+    printRows(list, `تقرير التقفيلات — ${filter === 'today' ? 'اليوم' : filter === 'yesterday' ? 'أمس' : 'الأسبوع الماضي'}`, { firstActiveId, currentUserName: name })
+  }, [filter, printRows, firstActiveId, name])
 
   const toggleRowSelection = useCallback((id: string) => {
     setSelectedRowIds((prev) => {
@@ -747,16 +748,16 @@ export function CashBox({ name, onExit }: CashBoxProps) {
       return
     }
     const list = displayRows.filter((r) => selectedRowIds.has(r.id))
-    printRows(list, 'طباعة الصفوف المحددة')
-  }, [selectedRowIds, displayRows, printRows])
+    printRows(list, 'طباعة الصفوف المحددة', { firstActiveId, currentUserName: name })
+  }, [selectedRowIds, displayRows, printRows, firstActiveId, name])
 
   const handlePrintRow = useCallback(
     (rowId: string) => {
       const row = displayRows.find((r) => r.id === rowId)
       if (!row) return
-      printRows([row], 'طباعة تقفيلة')
+      printRows([row], 'طباعة تقفيلة', { firstActiveId, currentUserName: name })
     },
-    [displayRows, printRows]
+    [displayRows, printRows, firstActiveId, name]
   )
 
   const requestDeleteRow = useCallback((rowId: string) => {
@@ -864,13 +865,13 @@ export function CashBox({ name, onExit }: CashBoxProps) {
   )
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-200 font-cairo">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-900/95 backdrop-blur">
-        <div className="mx-auto w-full max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+    <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-900 dark:text-slate-200 font-cairo page-bg-pattern">
+      <header className="sticky top-0 z-40 border-b border-slate-400 dark:border-white/10 bg-white dark:bg-slate-900/95 backdrop-blur shadow-sm">
+        <div className="mx-auto w-full max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
             {(() => {
               const { label, kind } = getGreeting(liveNow)
-              const iconClass = 'w-5 h-5 shrink-0'
+              const iconClass = 'w-4 h-4 shrink-0'
               const icons: Record<string, JSX.Element> = {
                 morning: (
                   <svg className={iconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -899,26 +900,46 @@ export function CashBox({ name, onExit }: CashBoxProps) {
               }
               const isNight = kind === 'night'
               return (
-                <h1 className="flex items-center gap-3 py-2 px-4 rounded-xl border border-white/10 bg-slate-800/50 shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
-                  <span className={`flex items-center justify-center w-9 h-9 rounded-lg ${isNight ? 'bg-indigo-500/20 text-indigo-300' : 'bg-amber-500/15 text-amber-400'}`}>
+                <h1 className="flex items-center gap-2 py-1.5 px-3 rounded-xl border border-slate-400 dark:border-white/10 bg-slate-200 dark:bg-slate-800/50 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
+                  <span className={`flex items-center justify-center w-8 h-8 rounded-lg ${isNight ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'}`}>
                     {icons[kind]}
                   </span>
-                  <span className="text-base font-semibold text-slate-200 tracking-tight flex items-center gap-1">
-                    <span className={isNight ? 'text-indigo-300/90' : 'text-amber-400/95'}>{label}</span>
-                    <span className="text-slate-400 font-normal">،</span>
-                    <span className="text-slate-400 text-sm font-cairo text-right">{name}</span>
+                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 tracking-tight flex items-center gap-1">
+                    <span className={isNight ? 'text-indigo-700 dark:text-indigo-300/90' : 'text-amber-700 dark:text-amber-400/95'}>{label}</span>
+                    <span className="text-slate-700 dark:text-slate-400 font-normal">،</span>
+                    <span className="text-slate-700 dark:text-slate-400 text-xs font-cairo text-right">{name}</span>
                   </span>
                 </h1>
               )
             })()}
-            <div className="rounded-xl border border-slate-600/50 bg-slate-800/60 px-2 py-1.5 shadow-[0_2px_6px_rgba(0,0,0,0.15)]">
+            <div className="relative z-[50] rounded-xl border border-slate-400 dark:border-slate-600/50 bg-slate-200 dark:bg-slate-800/60 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(0,0,0,0.15)]">
+              <button
+                ref={themeToggleRef}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleThemeToggle()
+                }}
+                className="flex items-center justify-center w-9 h-9 rounded-lg text-slate-700 hover:text-teal-600 hover:bg-teal-500/15 dark:text-slate-400 dark:hover:text-teal-400 dark:hover:bg-teal-500/10 transition cursor-pointer select-none touch-manipulation"
+                title={theme === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'}
+                aria-label={theme === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'}
+              >
+                {theme === 'dark' ? (
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                ) : (
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                )}
+              </button>
+            </div>
+            <div className="rounded-xl border border-slate-400 dark:border-slate-600/50 bg-slate-200 dark:bg-slate-800/60 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(0,0,0,0.15)]">
               <button
                 type="button"
                 onClick={onExit}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 text-sm font-cairo transition"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-800 hover:text-teal-600 hover:bg-teal-500/15 dark:text-slate-400 dark:hover:text-amber-400 dark:hover:bg-amber-500/10 text-xs font-cairo transition"
                 title="تغيير المستخدم"
               >
-                <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <circle cx="12" cy="8" r="4" />
                   <path d="M4 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
                   <path d="M16 11l3 3-3 3" />
@@ -928,7 +949,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
               </button>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <input
               ref={fileInputRef}
               type="file"
@@ -937,25 +958,25 @@ export function CashBox({ name, onExit }: CashBoxProps) {
               aria-hidden
               onChange={handleExcelUpload}
             />
-            <div className="rounded-xl border border-violet-500/25 bg-violet-500/10 px-2 py-1.5 shadow-[0_2px_8px_rgba(139,92,246,0.12)]">
+            <div className="rounded-xl border border-violet-300 dark:border-violet-500/25 bg-violet-100 dark:bg-violet-500/10 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_8px_rgba(139,92,246,0.12)]">
               <button
                 type="button"
                 onClick={handleUploadFilesClick}
-                className="inline-flex items-center justify-center gap-2.5 px-4 py-2 rounded-lg text-base font-cairo font-bold bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border border-violet-400/30 shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
-                title="رفع ملف إكسل للمعاملات البنكية"
+                className="inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-sm font-cairo font-bold bg-teal-500 hover:bg-teal-600 dark:bg-gradient-to-r dark:from-violet-600 dark:to-indigo-600 dark:hover:from-violet-500 dark:hover:to-indigo-500 text-white border border-teal-400/50 dark:border-violet-400/30 shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
+                title="استخراج قيم مدى، فيزا، ماستر كارد، تحويل بنكي من تقرير إكسل"
               >
-                <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
                   <path d="M17 8l-5-5-5 5" />
                   <path d="M12 3v12" />
                 </svg>
-                <span>رفع ملفات</span>
+                <span>استخراج قيم</span>
               </button>
             </div>
-            <span className="w-px h-6 bg-white/10 rounded-full" aria-hidden="true" />
-            <div className="flex items-center gap-1 rounded-xl border border-amber-500/25 bg-amber-500/10 px-2 py-1.5 shadow-[0_2px_6px_rgba(245,158,11,0.08)]">
-              <span className="flex items-center justify-center w-7 h-7 rounded-md bg-amber-500/15 text-amber-400/90 shrink-0" aria-hidden="true">
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <span className="w-px h-5 bg-slate-400 dark:bg-white/10 rounded-full" aria-hidden="true" />
+            <div className="flex items-center gap-1 rounded-xl border border-amber-300 dark:border-amber-500/25 bg-amber-100 dark:bg-amber-500/10 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(245,158,11,0.08)]">
+              <span className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-200 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400/90 shrink-0" aria-hidden="true">
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
                   <path d="M16 2v4M8 2v4M3 10h18" />
                 </svg>
@@ -965,20 +986,22 @@ export function CashBox({ name, onExit }: CashBoxProps) {
                   key={f.id}
                   type="button"
                   onClick={() => setFilter(f.id)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                    filter === f.id ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40 shadow-sm' : 'text-slate-400 border border-transparent hover:bg-white/5 hover:text-slate-300'
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                    filter === f.id
+                      ? 'bg-teal-500/20 text-teal-800 border border-teal-600 dark:bg-amber-500/25 dark:text-amber-300 dark:border-amber-500/40 shadow-sm'
+                      : 'text-slate-700 border border-transparent hover:bg-slate-300 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-300'
                   }`}
                 >
                   {f.label}
                 </button>
               ))}
             </div>
-            <span className="w-px h-6 bg-white/10 rounded-full" aria-hidden="true" />
-            <div className="flex items-center gap-1.5 rounded-xl border border-sky-500/25 bg-sky-500/10 px-2 py-1.5 shadow-[0_2px_6px_rgba(14,165,233,0.08)]">
+            <span className="w-px h-5 bg-slate-400 dark:bg-white/10 rounded-full" aria-hidden="true" />
+            <div className="flex items-center gap-1.5 rounded-xl border border-slate-400 dark:border-sky-500/25 bg-slate-200 dark:bg-sky-500/10 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(14,165,233,0.08)]">
               <button
                 type="button"
                 onClick={handlePrintAll}
-                className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-bold transition"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-600 dark:bg-sky-600 dark:hover:bg-sky-500 text-white text-xs font-bold transition"
                 title="طباعة كل الصفوف المعروضة"
               >
                 <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -992,7 +1015,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
                 <button
                   type="button"
                   onClick={handlePrintSelected}
-                  className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg bg-sky-500/90 hover:bg-sky-500 text-white text-sm font-bold transition"
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-400 hover:bg-teal-500 dark:bg-sky-500/90 dark:hover:bg-sky-500 text-white text-xs font-bold transition"
                   title={`طباعة ${selectedRowIds.size} صف محدد`}
                 >
                   <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1011,7 +1034,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
       <main className="mx-auto w-full max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] px-4 py-4 flex flex-col gap-4">
         {/* جدول الصفوف — تصميم 2026: زجاجية خفيفة، تباين ناعم، تسلسل بصري واضح */}
         <div
-          className="rounded-3xl overflow-hidden flex flex-col border border-white/[0.06] bg-slate-800/30 backdrop-blur-sm shadow-[0_8px_32px_rgba(0,0,0,0.24),0_0_0_1px_rgba(255,255,255,0.04)_inset]"
+          className="rounded-3xl overflow-hidden flex flex-col border border-slate-400 dark:border-white/[0.06] bg-white dark:bg-slate-800/30 backdrop-blur-sm shadow-[0_4px_24px_rgba(0,0,0,0.1),0_0_0_1px_rgba(0,0,0,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.24),0_0_0_1px_rgba(255,255,255,0.04)_inset]"
           style={{ minHeight: ROWS_PER_PAGE * 52 + 48 + 56 + 44 }}
         >
           <div className="overflow-x-auto flex-1 min-h-0 scrollbar-thin" style={{ scrollbarGutter: 'stable' }}>
@@ -1031,35 +1054,37 @@ export function CashBox({ name, onExit }: CashBoxProps) {
                 <col style={{ width: '6%' }} />
                 <col style={{ width: '6%' }} />
                 <col style={{ width: '6%' }} />
+                <col style={{ width: '6%' }} />
                 <col style={{ width: '10%' }} />
               </colgroup>
-              <thead className="sticky top-0 z-10 bg-slate-800/90 backdrop-blur-md border-b border-white/[0.06]">
-                <tr className="h-16">
-                  <th className="p-2 text-center text-amber-400/90 text-xs font-semibold tracking-wide align-middle border-r border-white/[0.05] font-cairo">تحديد</th>
-                  <th className="p-2 text-center text-slate-400 text-xs font-medium align-middle border-r border-white/[0.05] font-cairo">م</th>
-                  <th className="p-2 text-center text-amber-400/90 text-xs font-semibold tracking-wide align-middle border-r border-white/[0.05] font-cairo">كاش</th>
-                  <th className="p-2 text-center text-slate-300/90 text-xs font-medium align-middle border-r border-white/[0.05] font-cairo" title="مرسل للخزنة — يدخل في معادلة انحراف الكاش">مرسل للخزنة</th>
-                  <th className="p-2 text-center text-slate-300/90 text-xs font-medium align-middle border-r border-white/[0.05] font-cairo" title="يُخصم من المصروفات في انحراف الكاش">تعويض مصروفات</th>
-                  <th className="p-2 text-center text-amber-400/90 text-xs font-semibold align-middle border-r border-white/[0.05] font-cairo">المصروفات</th>
-                  <th className="p-2 text-center text-emerald-400/95 text-xs font-semibold align-middle border-r border-white/[0.05] font-cairo">رصيد البرنامج كاش</th>
-                  <th className="p-2 text-center text-red-400/95 text-xs font-semibold align-middle border-r border-red-500/20 bg-red-500/5 font-cairo">انحراف الكاش</th>
-                  <th className="p-2 text-center text-slate-300/90 text-xs font-medium align-middle border-r border-white/[0.05] font-cairo">مدى</th>
-                  <th className="p-2 text-center text-slate-300/90 text-xs font-medium align-middle border-r border-white/[0.05] font-cairo">فيزا</th>
-                  <th className="p-2 text-center text-slate-300/90 text-xs font-medium align-middle border-r border-white/[0.05] font-cairo">ماستر كارد</th>
-                  <th className="p-2 text-center text-sky-400/95 text-xs font-medium align-middle border-r border-white/[0.05] font-cairo">تحويل بنكي</th>
-                  <th className="p-2 text-center text-emerald-400/95 text-xs font-semibold align-middle border-r border-white/[0.05] font-cairo">اجمالى الموازنه</th>
-                  <th className="p-2 text-center text-red-400/95 text-xs font-semibold align-middle border-r border-red-500/20 bg-red-500/5 font-cairo">انحراف البنك</th>
-                  <th className="p-2 text-center text-slate-400 text-xs font-medium align-middle border-r border-white/[0.05] overflow-hidden min-w-0 font-cairo">
-                    <div className="flex flex-col items-center justify-center gap-1 h-full min-w-0">
+              <thead className="sticky top-0 z-10 bg-slate-200 dark:bg-slate-800/95 backdrop-blur-md border-b border-slate-400 dark:border-white/[0.06] shadow-sm">
+                <tr className="h-14">
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">تحديد</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">م</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">كاش</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo" title="مرسل للخزنة — يدخل في معادلة انحراف الكاش">مرسل للخزنة</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo" title="يُخصم من المصروفات في انحراف الكاش">تعويض مصروفات</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-800 dark:text-slate-300 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">المصروفات</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-teal-700 dark:text-teal-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">رصيد البرنامج كاش</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-bold text-red-700 dark:text-red-400 tracking-tight align-middle border-r border-red-300 dark:border-red-500/20 bg-red-100 dark:bg-red-500/10 font-cairo rounded-sm" title="خانة مهمة: الفرق بين المتوقع والفعلي للكاش">انحراف الكاش</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">مدى</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">فيزا</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">ماستر كارد</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-sky-700 dark:text-sky-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo" title="للعرض فقط — لا يدخل في بنك نزيل ولا انحراف البنك">تحويل بنكي</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-teal-700 dark:text-teal-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo" title="بنك نزيل = مدى + فيزا + ماستر كارد (تحويل بنكي للعرض فقط)">بنك نزيل</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">اجمالى الموازنه</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-bold text-red-700 dark:text-red-400 tracking-tight align-middle border-r border-red-300 dark:border-red-500/20 bg-red-100 dark:bg-red-500/10 font-cairo rounded-sm" title="خانة مهمة: الفرق بين بنك نزيل واجمالى الموازنه">انحراف البنك</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] overflow-hidden min-w-0 font-cairo">
+                    <div className="flex flex-col items-center justify-center gap-1.5 h-full min-w-0">
                       <span className="truncate max-w-full">الحالة / إجراءات</span>
                       <button
                         type="button"
                         onClick={requestDeleteAllClosed}
                         aria-label="حذف كل التقفيلات المغلقة"
-                        className="inline-flex items-center justify-center w-6 h-6 rounded-lg border border-red-500/20 bg-slate-700/50 text-slate-400 hover:bg-red-500/15 hover:text-red-400 hover:border-red-500/30 transition-all shrink-0"
+                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg border border-slate-400 dark:border-white/10 bg-slate-100 dark:bg-slate-700/50 text-slate-700 dark:text-slate-400 hover:bg-red-100 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 hover:border-red-400 dark:hover:border-red-500/30 transition-all shrink-0"
                         title="حذف كل التقفيلات المغلقة"
                       >
-                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
                           <path d="M10 11v6M14 11v6" />
                         </svg>
@@ -1091,18 +1116,19 @@ export function CashBox({ name, onExit }: CashBoxProps) {
                     onShowExcelDetails={setExcelDetailModal}
                     onShowEmployeeNames={lastExcelEmployeeNamesList.length > 0 ? () => setShowEmployeeNamesModal(true) : undefined}
                     onShowVarianceExplanation={(type, row) => setVarianceExplanationModal({ type, row })}
+                    currentUserName={name}
                   />
                 ))}
               </tbody>
             </table>
           </div>
           {displayRows.length > ROWS_PER_PAGE && (
-            <div className="px-4 py-3 border-t border-white/[0.06] flex items-center justify-center gap-2 flex-wrap rounded-b-3xl bg-slate-800/50 backdrop-blur-sm">
+            <div className="px-4 py-3 border-t border-slate-400 dark:border-white/[0.06] flex items-center justify-center gap-2 flex-wrap rounded-b-3xl bg-slate-200 dark:bg-slate-800/50 backdrop-blur-sm">
               <button
                 type="button"
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage <= 1}
-                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-amber-500/25 bg-amber-500/10 text-amber-400/95 hover:bg-amber-500/20 hover:border-amber-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-white/10 disabled:bg-slate-800/60 disabled:text-slate-500 transition-all"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-teal-200 dark:border-amber-500/25 bg-teal-50 dark:bg-amber-500/10 text-teal-700 dark:text-amber-400/95 hover:bg-teal-100 hover:border-teal-300 dark:hover:bg-amber-500/20 dark:hover:border-amber-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-slate-400 disabled:bg-slate-300 disabled:text-slate-600 dark:disabled:border-white/10 dark:disabled:bg-slate-800/60 dark:disabled:text-slate-500 transition-all"
                 aria-label="الصفحة السابقة"
               >
                 <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1110,14 +1136,14 @@ export function CashBox({ name, onExit }: CashBoxProps) {
                 </svg>
                 السابق
               </button>
-              <span className="inline-flex items-center min-w-[4rem] justify-center px-3 py-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 text-sm font-cairo font-semibold tabular-nums shadow-[0_0_12px_rgba(245,158,11,0.1)]">
+              <span className="inline-flex items-center min-w-[4rem] justify-center px-3 py-2 rounded-xl bg-teal-100 dark:bg-amber-500/15 border border-teal-200 dark:border-amber-500/30 text-teal-700 dark:text-amber-400 text-sm font-cairo font-semibold tabular-nums shadow-sm dark:shadow-[0_0_12px_rgba(245,158,11,0.1)]">
                 {currentPage === 1 ? 'الرئيسية' : currentPage} / {totalPages}
               </span>
               <button
                 type="button"
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage >= totalPages}
-                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-amber-500/25 bg-amber-500/10 text-amber-400/95 hover:bg-amber-500/20 hover:border-amber-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-white/10 disabled:bg-slate-800/60 disabled:text-slate-500 transition-all"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-teal-200 dark:border-amber-500/25 bg-teal-50 dark:bg-amber-500/10 text-teal-700 dark:text-amber-400/95 hover:bg-teal-100 hover:border-teal-300 dark:hover:bg-amber-500/20 dark:hover:border-amber-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-slate-400 disabled:bg-slate-300 disabled:text-slate-600 dark:disabled:border-white/10 dark:disabled:bg-slate-800/60 dark:disabled:text-slate-500 transition-all"
                 aria-label="الصفحة التالية"
               >
                 التالي
@@ -1128,22 +1154,22 @@ export function CashBox({ name, onExit }: CashBoxProps) {
             </div>
           )}
           {displayRows.length === 0 && (
-            <div className="py-16 px-4 text-center rounded-b-3xl bg-slate-800/20">
-              <p className="text-slate-500 font-cairo mb-1">لا توجد تقفيلات</p>
-              <p className="text-slate-600 text-sm font-cairo">اختر فلتراً مختلفاً أو ابدأ شفتاً جديداً</p>
+            <div className="py-16 px-4 text-center rounded-b-3xl bg-slate-200 dark:bg-slate-800/20">
+              <p className="text-slate-700 dark:text-slate-500 font-cairo mb-1">لا توجد تقفيلات</p>
+              <p className="text-slate-800 dark:text-slate-600 text-sm font-cairo">اختر فلتراً مختلفاً أو ابدأ شفتاً جديداً</p>
             </div>
           )}
         </div>
 
         {/* شريط إغلاق الشفت والتراجع — تحت الجدول، فوق الحاسبتين */}
-        <div className="flex flex-col items-center justify-center gap-2 py-3 px-4 rounded-xl border border-amber-500/30 bg-gradient-to-b from-amber-500/10 to-slate-800/60 min-h-0 shadow-[0_4px_20px_rgba(245,158,11,0.12),0_0_1px_rgba(255,255,255,0.06)]">
+        <div className="flex flex-col items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-amber-500 dark:border-amber-500/30 bg-gradient-to-b from-amber-100 to-slate-200 dark:from-amber-500/10 dark:to-slate-800/60 min-h-0 shadow-md dark:shadow-[0_4px_20px_rgba(245,158,11,0.12),0_0_1px_rgba(255,255,255,0.06)]">
           {closingRowId ? (
             <div className="flex flex-wrap items-center justify-center w-full" dir="ltr">
               {closingSecondsLeft > 0 ? (
                 <button
                   type="button"
                   onClick={handleUndoClose}
-                  className="btn-close-shift inline-flex items-center justify-center gap-3 px-7 py-3.5 rounded-2xl text-base font-cairo font-bold whitespace-nowrap border-2 border-emerald-500/60 bg-gradient-to-b from-emerald-500/30 to-emerald-600/20 text-emerald-50 shadow-[0_4px_24px_rgba(16,185,129,0.25)] hover:from-emerald-500/40 hover:to-emerald-600/30 hover:shadow-[0_6px_28px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all select-none"
+                  className="btn-close-shift inline-flex items-center justify-center gap-3 px-7 py-3.5 rounded-2xl text-base font-cairo font-bold whitespace-nowrap border-2 border-teal-400 bg-teal-500 hover:bg-teal-600 text-white shadow-md dark:border-emerald-500/60 dark:bg-gradient-to-b dark:from-emerald-500/30 dark:to-emerald-600/20 dark:text-emerald-50 dark:shadow-[0_4px_24px_rgba(16,185,129,0.25)] dark:hover:from-emerald-500/40 dark:hover:to-emerald-600/30 dark:hover:shadow-[0_6px_28px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all select-none"
                 >
                   <svg className="w-6 h-6 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M3 10h10a5 5 0 015 5v2" />
@@ -1153,7 +1179,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
                   <span className="tabular-nums font-cairo">({closingSecondsLeft} ثانية)</span>
                 </button>
               ) : (
-                <span className="text-sm font-cairo font-medium text-amber-400 tabular-nums">جاري الإغلاق...</span>
+                <span className="text-sm font-cairo font-medium text-amber-800 dark:text-amber-400 tabular-nums">جاري الإغلاق...</span>
               )}
             </div>
           ) : firstActiveId && firstActiveRow ? (
@@ -1163,19 +1189,17 @@ export function CashBox({ name, onExit }: CashBoxProps) {
               disabled={!canCloseShift}
               className={`btn-close-shift inline-flex items-center justify-center gap-3 px-8 py-3.5 min-w-[280px] rounded-2xl text-base font-cairo font-bold whitespace-nowrap border-2 select-none transition-all
                 ${canCloseShift
-                  ? 'bg-gradient-to-b from-amber-500/50 to-amber-600/40 text-amber-50 border-amber-400 shadow-[0_4px_24px_rgba(245,158,11,0.3)] hover:from-amber-500/60 hover:to-amber-600/50 hover:shadow-[0_6px_28px_rgba(245,158,11,0.35)] hover:scale-[1.02] active:scale-[0.98]'
-                  : 'bg-slate-700/50 text-slate-500 border-slate-600/50 cursor-not-allowed opacity-70'
+                  ? 'bg-teal-500 hover:bg-teal-600 text-white border-teal-400 shadow-md dark:bg-gradient-to-b dark:from-amber-500/50 dark:to-amber-600/40 dark:text-amber-50 dark:border-amber-400 dark:shadow-[0_4px_24px_rgba(245,158,11,0.3)] dark:hover:from-amber-500/60 dark:hover:to-amber-600/50 dark:hover:shadow-[0_6px_28px_rgba(245,158,11,0.35)] hover:scale-[1.02] active:scale-[0.98]'
+                  : 'opacity-60 bg-slate-200 text-slate-500 border-slate-300 dark:opacity-50 dark:bg-slate-800/40 dark:text-slate-500 dark:border-slate-600/50 cursor-not-allowed'
                 }`}
               title={canCloseShift ? 'إغلاق الشفت وحفظ التقفيلة' : 'أدخل رصيد البرنامج كاش وإجمالي الموازنة (البنك) أولاً'}
             >
-              <svg className={`btn-close-shift-icon w-6 h-6 shrink-0 ${canCloseShift ? 'text-amber-200' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg className={`btn-close-shift-icon w-6 h-6 shrink-0 ${canCloseShift ? 'text-white dark:text-amber-200' : 'text-slate-500 dark:text-slate-500'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                 <path d="M7 11V7a5 5 0 0110 0v4" />
               </svg>
               <span className="tracking-wide">
-                {firstActiveRow.employeeName
-                  ? `إغلاق شفت ${firstActiveRow.employeeName}`
-                  : 'إغلاق الشفت الحالي'}
+                {name ? `إغلاق شفت ${name}` : 'إغلاق الشفت الحالي'}
               </span>
             </button>
           ) : null}
@@ -1210,21 +1234,21 @@ export function CashBox({ name, onExit }: CashBoxProps) {
         const title = `تفاصيل ${labels[excelDetailModal]} — ${list.length} عملية`
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default" role="dialog" aria-modal="true" aria-labelledby="excel-detail-title" onClick={() => setExcelDetailModal(null)}>
-            <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-sm w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
-              <h2 id="excel-detail-title" className="text-base font-bold text-amber-400 p-4 pb-2 border-b border-white/10">
+            <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-sm w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+              <h2 id="excel-detail-title" className="text-base font-bold text-teal-700 dark:text-amber-400 p-4 pb-2 border-b border-slate-400 dark:border-white/10">
                 {title}
               </h2>
               <div className="overflow-y-auto flex-1 min-h-0 p-3 space-y-2">
                 {list.map((t, i) => (
-                  <div key={i} className="py-2 border-b border-white/5">
-                    <div className="flex justify-between items-center gap-2 text-sm text-slate-300">
+                  <div key={i} className="py-2 border-b border-slate-100 dark:border-white/5">
+                    <div className="flex justify-between items-center gap-2 text-sm text-slate-800 dark:text-slate-300">
                       <div className="flex flex-col items-start gap-0.5 min-w-0">
                         <span className="tabular-nums font-cairo">{formatDateTime(t.date)}</span>
                         {t.employeeName && (
                           <span className="text-xs text-slate-400 font-cairo">— {t.employeeName}</span>
                         )}
                       </div>
-                      <span className="tabular-nums font-medium text-amber-200/95 shrink-0">{formatCurrency(t.amount)}</span>
+                      <span className="tabular-nums font-medium text-teal-600 dark:text-amber-200/95 shrink-0">{formatCurrency(t.amount)}</span>
                     </div>
                     {t.purpose && (
                       <p className="text-xs font-cairo text-amber-200/80 mt-1 pr-0 border-t border-amber-500/20 pt-1">
@@ -1234,15 +1258,15 @@ export function CashBox({ name, onExit }: CashBoxProps) {
                   </div>
                 ))}
               </div>
-              <div className="p-4 pt-2 border-t border-amber-500/30 flex justify-between items-center bg-slate-900/50">
-                <span className="font-bold text-slate-200">الإجمالي</span>
-                <span className="tabular-nums font-bold text-amber-400">{formatCurrency(total)}</span>
+              <div className="p-4 pt-2 border-t border-slate-400 dark:border-amber-500/30 flex justify-between items-center bg-slate-100 dark:bg-slate-900/50">
+                <span className="font-bold text-slate-800 dark:text-slate-200">الإجمالي</span>
+                <span className="tabular-nums font-bold text-teal-600 dark:text-amber-400">{formatCurrency(total)}</span>
               </div>
               <div className="p-3">
                 <button
                   type="button"
                   onClick={() => setExcelDetailModal(null)}
-                  className="w-full py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+                  className="w-full py-2.5 rounded-xl text-sm font-bold bg-teal-500 hover:bg-teal-600 dark:bg-slate-600 dark:hover:bg-slate-500 text-white dark:text-slate-200 transition"
                 >
                   إغلاق
                 </button>
@@ -1271,7 +1295,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
         })
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default" role="dialog" aria-modal="true" aria-labelledby="employee-names-title" onClick={() => setShowEmployeeNamesModal(false)}>
-            <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
               <h2 id="employee-names-title" className="text-base font-bold text-amber-400 p-4 pb-2 border-b border-white/10">
                 أسماء الموظفين في العمليات المستوردة
               </h2>
@@ -1309,18 +1333,22 @@ export function CashBox({ name, onExit }: CashBoxProps) {
         const programBalanceCash = row.programBalanceCash ?? 0
         const expectedProgramCash = cash + sentToTreasury + effectiveExpenses
         const cashVariance = computeCashVariance(row)
-        const bankTotal = row.mada + row.visa + row.mastercard + row.bankTransfer
+        const bankTotal = row.mada + row.visa + row.mastercard
         const programBalanceBank = row.programBalanceBank ?? 0
         const bankVariance = computeBankVariance(row)
         const isCash = type === 'cash'
         const title = isCash ? 'شرح انحراف الكاش' : 'شرح انحراف البنك'
+        const oppositeSigns = cashVariance !== 0 && bankVariance !== 0 && (cashVariance > 0) !== (bankVariance > 0)
+        const diffWithin2 = Math.abs(Math.abs(cashVariance) - Math.abs(bankVariance)) <= VARIANCE_SWAP_TOLERANCE_SAR
+        const showSwapAlert = oppositeSigns && diffWithin2
+        const swapAmount = showSwapAlert ? Math.abs(cashVariance) : 0
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default" role="dialog" aria-modal="true" aria-labelledby="variance-explanation-title" onClick={() => setVarianceExplanationModal(null)}>
-            <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
-              <h2 id="variance-explanation-title" className="text-base font-bold text-amber-400 p-4 pb-2 border-b border-white/10">
+            <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+              <h2 id="variance-explanation-title" className="text-base font-bold text-teal-700 dark:text-amber-400 p-4 pb-2 border-b border-slate-400 dark:border-white/10">
                 {title}
               </h2>
-              <div className="overflow-y-auto flex-1 min-h-0 p-4 space-y-3 text-sm text-slate-300">
+              <div className="overflow-y-auto flex-1 min-h-0 p-4 space-y-3 text-sm text-slate-800 dark:text-slate-300">
                 {isCash ? (
                   <>
                     <p className="text-slate-200 font-medium">انحراف الكاش = (كاش + مرسل للخزنة + مصروفات فعّالة) − رصيد البرنامج كاش</p>
@@ -1340,20 +1368,25 @@ export function CashBox({ name, onExit }: CashBoxProps) {
                   </>
                 ) : (
                   <>
-                    <p className="text-slate-200 font-medium">انحراف البنك = إجمالي البنك (مدى + فيزا + ماستر كارد + تحويل بنكي) − إجمالي الموازنة</p>
+                    <p className="text-slate-200 font-medium">انحراف البنك = بنك نزيل − اجمالى الموازنه</p>
                     <ul className="space-y-1.5 list-none">
                       <li className="flex justify-between gap-2"><span>مدى</span><span className="tabular-nums text-amber-200/90">{formatCurrency(row.mada)}</span></li>
                       <li className="flex justify-between gap-2"><span>فيزا</span><span className="tabular-nums text-amber-200/90">{formatCurrency(row.visa)}</span></li>
                       <li className="flex justify-between gap-2"><span>ماستر كارد</span><span className="tabular-nums text-amber-200/90">{formatCurrency(row.mastercard)}</span></li>
-                      <li className="flex justify-between gap-2"><span>تحويل بنكي</span><span className="tabular-nums text-amber-200/90">{formatCurrency(row.bankTransfer)}</span></li>
-                      <li className="flex justify-between gap-2 border-t border-white/10 pt-1.5 font-medium"><span>إجمالي البنك</span><span className="tabular-nums text-amber-300">{formatCurrency(bankTotal)}</span></li>
-                      <li className="flex justify-between gap-2"><span>إجمالي الموازنة (رصيد البرنامج بنك)</span><span className="tabular-nums text-amber-200/90">− {formatCurrency(programBalanceBank)}</span></li>
+                      <li className="flex justify-between gap-2"><span>تحويل بنكي <span className="text-slate-500 text-[10px]">(للعرض فقط)</span></span><span className="tabular-nums text-amber-200/90">{formatCurrency(row.bankTransfer)}</span></li>
+                      <li className="flex justify-between gap-2 border-t border-white/10 pt-1.5 font-medium"><span>بنك نزيل (مدى+فيزا+ماستر)</span><span className="tabular-nums text-amber-300">{formatCurrency(bankTotal)}</span></li>
+                      <li className="flex justify-between gap-2"><span>اجمالى الموازنه</span><span className="tabular-nums text-amber-200/90">− {formatCurrency(programBalanceBank)}</span></li>
                       <li className="flex justify-between gap-2 border-t border-amber-500/30 pt-2 font-bold text-amber-300"><span>انحراف البنك</span><span className="tabular-nums">{bankVariance > 0 ? '+' : ''}{formatCurrency(bankVariance)}</span></li>
                     </ul>
                     <p className="text-xs text-slate-400 pt-1">
-                      {bankVariance > 0 ? 'زيادة: إجمالي مدى/فيزا/ماستر/تحويل أكبر من إجمالي الموازنة.' : bankVariance < 0 ? 'عجز: إجمالي الموازنة أكبر من إجمالي البنك المسجّل.' : 'لا يوجد انحراف.'}
+                      {bankVariance > 0 ? 'زيادة: بنك نزيل أكبر من اجمالى الموازنه المدخل.' : bankVariance < 0 ? 'عجز: اجمالى الموازنه أكبر من بنك نزيل.' : 'لا يوجد انحراف.'}
                     </p>
                   </>
+                )}
+                {showSwapAlert && (
+                  <div className="mt-3 p-3 rounded-xl border border-amber-400/50 dark:border-amber-500/30 bg-amber-50/80 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 text-sm">
+                    تنبيه: قد تكون سندات بقيمة <strong>{swapAmount.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}</strong> ريال دخلت في خانة خاطئة (نقداً ↔ شبكة). راجع تحويل المبلغ بين الكاش وبنك نزيل.
+                  </div>
                 )}
               </div>
               <div className="p-3 border-t border-white/10">
@@ -1373,14 +1406,14 @@ export function CashBox({ name, onExit }: CashBoxProps) {
       {closeConfirmVariance && (() => {
         const { cashVar, bankVar } = closeConfirmVariance
         const cashTip = cashVar !== 0 ? (cashVar > 0 ? 'زيادة في صندوق الكاش — راجع الرصيد الفعلي' : 'عجز في صندوق الكاش — راجع الكاش والرصيد والمصروف') : ''
-        const bankTip = bankVar !== 0 ? (bankVar > 0 ? 'زيادة في البنك — راجع إدخالات مدى/فيزا/ماستر/التحويل' : 'عجز في البنك — راجع إجمالي البنك واجمالى الموازنه') : ''
+        const bankTip = bankVar !== 0 ? (bankVar > 0 ? 'زيادة في البنك — راجع إدخالات مدى/فيزا/ماستر أو اجمالى الموازنه' : 'عجز في البنك — راجع بنك نزيل أو اجمالى الموازنه') : ''
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="close-variance-title">
-            <div className="rounded-2xl border border-amber-500/30 bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
-              <h2 id="close-variance-title" className="text-lg font-bold text-amber-400 mb-3">
+            <div className="rounded-2xl border border-amber-200 dark:border-amber-500/30 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+              <h2 id="close-variance-title" className="text-lg font-bold text-teal-700 dark:text-amber-400 mb-3">
                 تنبيه: يوجد انحراف
               </h2>
-              <div className="text-slate-300 text-sm leading-relaxed mb-4 space-y-2">
+              <div className="text-slate-800 dark:text-slate-300 text-sm leading-relaxed mb-4 space-y-2">
                 {cashVar !== 0 && (
                   <p className="block">
                     <span className="font-medium">انحراف الكاش: </span>
@@ -1420,7 +1453,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
 
       {transferConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="transfer-confirm-title">
-          <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+          <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
             <h2 id="transfer-confirm-title" className="text-lg font-bold text-amber-400 mb-3">
               ترحيل إلى {transferFieldLabel(transferConfirm.field)}
             </h2>
@@ -1447,86 +1480,6 @@ export function CashBox({ name, onExit }: CashBoxProps) {
         </div>
       )}
 
-      {uploadAskModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="upload-ask-title">
-          <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
-            <h2 id="upload-ask-title" className="text-lg font-bold text-amber-400 mb-3">
-              رفع ملف Excel
-            </h2>
-            <p className="text-slate-300 text-sm leading-relaxed mb-4">
-              اعتماد تاريخ ووقت آخر تقفيلة كبداية للفترة؟ (ستُستورد المعاملات بعد هذا التاريخ فقط)
-            </p>
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={handleUploadUseLastClosure}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition"
-              >
-                نعم
-              </button>
-              <button
-                type="button"
-                onClick={handleUploadPickCustomDate}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
-              >
-                لا — اختر تاريخاً ووقتاً
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {uploadCustomDateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="upload-custom-date-title">
-          <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
-            <h2 id="upload-custom-date-title" className="text-lg font-bold text-amber-400 mb-3">
-              تاريخ ووقت بداية الفترة
-            </h2>
-            <p className="text-slate-300 text-sm leading-relaxed mb-4">
-              اختر التاريخ والوقت؛ ستُستورد المعاملات بعد هذا التاريخ والوقت فقط.
-            </p>
-            <div className="flex flex-col gap-3 mb-4">
-              <label className="text-slate-400 text-sm font-cairo">
-                التاريخ
-                <input
-                  type="date"
-                  value={uploadCustomDateModal.date}
-                  onChange={(e) => setUploadCustomDateModal((p) => (p ? { ...p, date: e.target.value } : null))}
-                  className="mt-1 w-full px-3 py-2 rounded-lg bg-slate-900 border border-white/10 text-white font-cairo"
-                  dir="ltr"
-                />
-              </label>
-              <label className="text-slate-400 text-sm font-cairo">
-                الوقت
-                <input
-                  type="time"
-                  value={uploadCustomDateModal.time}
-                  onChange={(e) => setUploadCustomDateModal((p) => (p ? { ...p, time: e.target.value } : null))}
-                  className="mt-1 w-full px-3 py-2 rounded-lg bg-slate-900 border border-white/10 text-white font-cairo"
-                  dir="ltr"
-                />
-              </label>
-            </div>
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setUploadCustomDateModal(null)}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
-              >
-                إلغاء
-              </button>
-              <button
-                type="button"
-                onClick={handleUploadCustomDateConfirm}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-violet-600 hover:bg-violet-500 text-white transition"
-              >
-                رفع الملف
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {expenseModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default"
@@ -1536,7 +1489,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
           onClick={() => setExpenseModal(null)}
         >
           <div
-            className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-lg w-full max-h-[85vh] flex flex-col font-cairo cursor-auto"
+            className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-lg w-full max-h-[85vh] flex flex-col font-cairo cursor-auto"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !expenseModal.readOnly) {
@@ -1571,8 +1524,8 @@ export function CashBox({ name, onExit }: CashBoxProps) {
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {!expenseModal.readOnly && expenseModal.items.length > 0 && (
                 <div className="flex gap-2 items-center pb-0.5">
-                  <span className="flex-1 text-xs font-medium text-slate-500 font-cairo">بند المصروف</span>
-                  <span className="w-24 text-xs font-medium text-slate-500 font-cairo text-center">مبلغ المصروف</span>
+                  <span className="flex-1 text-xs font-medium text-slate-700 font-cairo">بند المصروف</span>
+                  <span className="w-24 text-xs font-medium text-slate-700 font-cairo text-center">مبلغ المصروف</span>
                   <span className="w-10 shrink-0" aria-hidden="true" />
                 </div>
               )}
@@ -1589,7 +1542,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
                         <span className="flex-1 px-3 py-2 rounded-lg bg-slate-900/60 border border-white/10 text-slate-200 text-sm font-cairo">
                           {item.description || '—'}
                           {isLocked && (
-                            <span className="mr-1 text-[10px] text-slate-500 font-cairo" title="من الشفت السابق"> (مرحّل)</span>
+                            <span className="mr-1 text-[10px] text-slate-600 font-cairo" title="من الشفت السابق"> (مرحّل)</span>
                           )}
                         </span>
                         {!expenseModal.readOnly && isLocked ? (
@@ -1638,7 +1591,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
                               placeholder={hasAmount ? 'الوصف إلزامي' : 'الوصف'}
                               title={hasAmount ? 'الوصف إلزامي عند وجود مبلغ' : undefined}
                               aria-required={hasAmount}
-                              className={`flex-1 px-3 py-2 rounded-lg bg-slate-900/80 border text-white text-sm font-cairo placeholder:text-slate-500 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/25 ${needsDesc ? 'border-amber-500/50 ring-1 ring-amber-500/25' : 'border-amber-500/25'} ${isPulsing ? 'expense-description-pulse' : ''}`}
+                              className={`flex-1 px-3 py-2 rounded-lg bg-white dark:bg-slate-900/80 border text-slate-900 dark:text-white text-sm font-cairo placeholder:text-slate-500 dark:placeholder:text-slate-500 focus:border-teal-500/50 dark:focus:border-amber-500/50 focus:ring-1 focus:ring-teal-500/25 dark:focus:ring-amber-500/25 ${needsDesc ? 'border-amber-500 dark:border-amber-500/50 ring-1 ring-amber-500/25' : 'border-slate-400 dark:border-amber-500/25'} ${isPulsing ? 'expense-description-pulse' : ''}`}
                             />
                           )
                         })()}
@@ -1662,7 +1615,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
                             }
                           }}
                           placeholder="مبلغ"
-                          className="cashbox-input w-24 px-3 py-2 rounded-lg bg-slate-900/80 border border-amber-500/25 text-white text-sm text-center focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/25"
+                          className="cashbox-input w-24 px-3 py-2 rounded-lg bg-white dark:bg-slate-900/80 border border-slate-400 dark:border-amber-500/25 text-slate-900 dark:text-white text-sm text-center focus:border-teal-500/50 dark:focus:border-amber-500/50 focus:ring-1 focus:ring-teal-500/25 dark:focus:ring-amber-500/25"
                         />
                         <button
                           type="button"
@@ -1729,7 +1682,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
 
       {deleteCarriedConfirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-carried-dialog-title">
-          <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+          <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
             <h2 id="delete-carried-dialog-title" className="text-lg font-bold text-amber-400 mb-3">
               {deleteCarriedConfirm.step === 'confirm' ? 'حذف بند مرحّل' : 'كود الأدمن'}
             </h2>
@@ -1794,7 +1747,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
 
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
-          <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+          <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
             <h2 id="delete-dialog-title" className="text-lg font-bold text-amber-400 mb-3">
               {deleteConfirm.step === 'confirm' ? 'حذف الصف' : 'كود الأدمن'}
             </h2>
@@ -1878,7 +1831,7 @@ export function CashBox({ name, onExit }: CashBoxProps) {
 
       {deleteAllClosedConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-all-dialog-title">
-          <div className="rounded-2xl border border-white/10 bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+          <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
             <h2 id="delete-all-dialog-title" className="text-lg font-bold text-amber-400 mb-3">
               {deleteAllClosedConfirm.step === 'confirm' ? 'حذف كل التقفيلات المغلقة' : 'كود الأدمن'}
             </h2>

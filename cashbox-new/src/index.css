@@ -24,6 +24,24 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* خلفية الصفحة بنقش خفيف — نقط دائرية متكررة */
+.page-bg-pattern {
+  background-image: radial-gradient(
+    circle at 50% 50%,
+    rgba(15, 23, 42, 0.06) 1px,
+    transparent 1px
+  );
+  background-size: 28px 28px;
+}
+.dark .page-bg-pattern {
+  background-image: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 255, 255, 0.04) 1px,
+    transparent 1px
+  );
+  background-size: 28px 28px;
+}
+
 input.cashbox-input {
   caret-color: transparent !important;
 }
@@ -47,10 +65,10 @@ input[type="number"].cashbox-input {
     height: 6px;
   }
   .scrollbar-thin::-webkit-scrollbar-track {
-    @apply bg-slate-800/50 rounded;
+    @apply bg-slate-300 dark:bg-slate-800/50 rounded;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-slate-500/50 rounded hover:bg-slate-500/70;
+    @apply bg-slate-500 dark:bg-slate-500/50 rounded hover:bg-slate-600 dark:hover:bg-slate-500/70;
   }
 }
 

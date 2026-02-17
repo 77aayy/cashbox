@@ -17,11 +17,12 @@ const KEY_MAP: Record<string, string> = {
   ',': '.',
 }
 
-/** ترحيل من الحاسبة: مدى، فيزا، ماستر كارد فقط (كاش من حاسبة الكاش، تحويل بنكي لا يُرحّل من الحاسبة) */
-const TRANSFER_OPTIONS: { field: 'mada' | 'visa' | 'mastercard'; label: string; icon: JSX.Element }[] = [
+/** ترحيل من الحاسبة: مدى، فيزا، ماستر كارد، تحويل بنكي (كاش من حاسبة الكاش) */
+const TRANSFER_OPTIONS: { field: TransferField; label: string; icon: JSX.Element }[] = [
   { field: 'mada', label: 'مدى', icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="1"/><path d="M2 10h20M7 14h2"/></svg> },
   { field: 'visa', label: 'فيزا', icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="1"/><path d="M2 12h20M9 9v6"/></svg> },
   { field: 'mastercard', label: 'ماستر كارد', icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="1"/><path d="M2 12h20M12 9v6"/></svg> },
+  { field: 'bankTransfer', label: 'تحويل بنكي', icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17L2 12l5-5"/><path d="M2 12h15"/><path d="M17 7l5 5-5 5"/><path d="M22 12H7"/></svg> },
 ]
 
 export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
@@ -172,11 +173,11 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
 
   const isOp = (k: string) => ['+', '-', '*', '/', '%'].includes(k)
   const btnClass = (k: string) => {
-    if (k === '=') return 'col-span-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-bold text-lg border border-amber-500/40'
-    if (isOp(k)) return 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-bold border border-amber-500/40 flex items-center justify-center'
-    if (k === 'C') return 'bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 text-base'
-    if (k === '⌫') return 'bg-slate-600/40 hover:bg-slate-500/50 text-slate-300 border border-white/10 text-base'
-    return 'bg-slate-700/40 hover:bg-slate-600/50 text-slate-200 border border-white/10 active:scale-[0.98] text-base'
+    if (k === '=') return 'col-span-2 bg-teal-500 hover:bg-teal-600 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-white dark:text-amber-400 font-bold text-lg border border-teal-400 dark:border-amber-500/40'
+    if (isOp(k)) return 'bg-teal-100 hover:bg-teal-200 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-teal-700 dark:text-amber-400 font-bold border border-teal-200 dark:border-amber-500/40 flex items-center justify-center'
+    if (k === 'C') return 'bg-red-100 hover:bg-red-200 dark:bg-red-500/20 dark:hover:bg-red-500/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/40 text-base'
+    if (k === '⌫') return 'bg-slate-300 hover:bg-slate-400 dark:bg-slate-600/40 dark:hover:bg-slate-500/50 text-slate-800 dark:text-slate-300 border border-slate-400 dark:border-white/10 text-base'
+    return 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-700/40 dark:hover:bg-slate-600/50 text-slate-900 dark:text-slate-200 border border-slate-400 dark:border-white/10 active:scale-[0.98] text-base'
   }
 
   const opIcons: Record<string, JSX.Element> = {
@@ -217,13 +218,13 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
   return (
     <div
       ref={containerRef}
-      className="w-[80%] max-w-full h-full min-h-0 flex flex-col rounded-2xl overflow-hidden mx-auto border border-amber-500/20 bg-slate-800/50 shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm"
+      className="w-[80%] max-w-full h-full min-h-0 flex flex-col rounded-2xl overflow-hidden mx-auto border border-slate-400 dark:border-amber-500/20 bg-white dark:bg-slate-800/50 shadow-[0_4px_24px_rgba(0,0,0,0.12),0_0_1px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm"
       tabIndex={0}
       title="انقر هنا ثم استخدم لوحة المفاتيح. النتيجة لا تتغير عند الكتابة في الجدول."
     >
-      <div className="bg-gradient-to-b from-amber-500/15 to-slate-800/60 px-4 py-3 border-b-2 border-amber-500/25 flex items-center justify-between gap-2 shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
-        <h3 className="flex items-center gap-2.5 text-base font-semibold text-amber-400 font-cairo tracking-wide">
-          <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400">
+      <div className="bg-gradient-to-b from-teal-100 to-slate-200 dark:from-amber-500/15 dark:to-slate-800/60 px-4 py-3 border-b-2 border-teal-300 dark:border-amber-500/25 flex items-center justify-between gap-2 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
+        <h3 className="flex items-center gap-2.5 text-base font-semibold text-teal-700 dark:text-amber-400 font-cairo tracking-wide">
+          <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-teal-100 dark:bg-amber-500/20 text-teal-600 dark:text-amber-400">
             <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <rect x="4" y="2" width="16" height="20" rx="2" />
             <path d="M6 6h12M6 10h12" />
@@ -240,7 +241,7 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
         <button
           type="button"
           onClick={() => setShowHistory((v) => !v)}
-          className={`p-1.5 rounded-lg transition ${showHistory ? 'bg-amber-500/20 text-amber-400' : 'text-slate-400 hover:text-amber-400 hover:bg-white/5'}`}
+          className={`p-1.5 rounded-lg transition ${showHistory ? 'bg-teal-100 text-teal-700 dark:bg-amber-500/20 dark:text-amber-400' : 'text-slate-700 dark:text-slate-400 hover:text-teal-600 hover:bg-slate-200 dark:hover:text-amber-400 dark:hover:bg-white/5'}`}
           title={showHistory ? 'إخفاء السجل' : 'سجل العمليات'}
           aria-label="سجل العمليات"
         >
@@ -251,12 +252,12 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
         </button>
       </div>
       <div className="flex-1 flex flex-col p-4 space-y-3 min-h-0">
-        <div className="rounded-xl bg-slate-900/80 border border-amber-500/30 p-2 shadow-[0_0_18px_rgba(245,158,11,0.14)]">
-          <div className="text-right text-slate-500 text-xs min-h-[16px] font-cairo tabular-nums select-none" aria-hidden="true">
+        <div className="rounded-xl bg-slate-100 dark:bg-slate-900/80 border border-slate-400 dark:border-amber-500/30 p-2 shadow-inner dark:shadow-[0_0_18px_rgba(245,158,11,0.14)]">
+          <div className="text-right text-slate-700 text-xs min-h-[16px] font-cairo tabular-nums select-none" aria-hidden="true">
             {expression || '\u200b'}
           </div>
           <div
-            className="w-full px-3 py-2.5 rounded-lg bg-slate-900/50 border-0 text-white text-right font-cairo text-2xl font-semibold tabular-nums min-h-[2.5rem] flex items-center justify-end"
+            className="w-full px-3 py-2.5 rounded-lg bg-white dark:bg-slate-900/50 border-0 text-slate-900 dark:text-white text-right font-cairo text-2xl font-semibold tabular-nums min-h-[2.5rem] flex items-center justify-end"
             aria-live="polite"
             aria-label={`النتيجة: ${display}`}
           >
@@ -274,15 +275,15 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
               }}
               disabled={!hasActiveRow || !(parseFloat(display) || 0)}
               title="ترحيل الرقم إلى عمود"
-              className="w-full py-2 rounded-xl text-sm font-cairo font-medium bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40 disabled:opacity-50 disabled:pointer-events-none transition flex items-center justify-center gap-2"
+              className="w-full py-2 rounded-xl text-sm font-cairo font-medium bg-teal-500 hover:bg-teal-600 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-white dark:text-emerald-400 border border-teal-400 dark:border-emerald-500/40 disabled:opacity-50 disabled:pointer-events-none transition flex items-center justify-center gap-2"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
               ترحيل الرقم
             </button>
             {showTransferMenu && (
               <>
-                <div className="absolute left-0 right-0 top-full mt-1 z-10 rounded-xl border border-white/10 bg-slate-800 shadow-xl py-2" role="menu">
-                  <div className="text-xs text-slate-500 font-cairo px-3 mb-1.5">أين تريد الترحيل؟</div>
+                <div className="absolute left-0 right-0 top-full mt-1 z-10 rounded-xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-xl py-2" role="menu">
+                  <div className="text-xs text-slate-700 font-cairo px-3 mb-1.5">أين تريد الترحيل؟</div>
                   {TRANSFER_OPTIONS.map(({ field, label, icon }) => (
                     <button
                       key={field}
@@ -295,9 +296,9 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
                         updateDisplay('0')
                         setExpression('')
                       }}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-right font-cairo text-sm text-slate-200 hover:bg-amber-500/20 hover:text-amber-400 transition"
+                      className="w-full flex items-center gap-3 px-3 py-2 text-right font-cairo text-sm text-slate-700 dark:text-slate-200 hover:bg-teal-50 hover:text-teal-700 dark:hover:bg-amber-500/20 dark:hover:text-amber-400 transition"
                     >
-                      <span className="text-amber-400/90">{icon}</span>
+                      <span className="text-teal-500 dark:text-amber-400/90">{icon}</span>
                       {label}
                     </button>
                   ))}
@@ -321,8 +322,8 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
           ))}
         </div>
         {showHistory && (
-          <div className="mt-3 pt-3 rounded-xl bg-slate-900/40 border border-white/10 shadow-inner px-3 py-2.5">
-            <div className="flex items-center gap-2 text-xs font-medium text-amber-400/80 font-cairo mb-2">
+          <div className="mt-3 pt-3 rounded-xl bg-slate-200 dark:bg-slate-900/40 border border-slate-400 dark:border-white/10 shadow-inner px-3 py-2.5">
+            <div className="flex items-center gap-2 text-xs font-medium text-teal-600 dark:text-amber-400/80 font-cairo mb-2">
               <svg className="w-3.5 h-3.5 shrink-0 opacity-80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M12 8v4l2 2" />
                 <circle cx="12" cy="12" r="10" />
@@ -331,10 +332,10 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
             </div>
             <div className="max-h-24 overflow-y-auto text-xs text-slate-300 font-cairo space-y-1.5 scrollbar-thin rounded-lg">
               {history.length === 0 ? (
-                <div className="text-slate-500 py-3 text-center rounded-lg bg-slate-800/30">لا يوجد سجل بعد</div>
+                <div className="text-slate-700 py-3 text-center rounded-lg bg-slate-300 dark:bg-slate-800/30">لا يوجد سجل بعد</div>
               ) : (
                 history.map((h, i) => (
-                  <div key={i} className="tabular-nums px-2 py-1 rounded-md bg-slate-800/40 text-slate-300 hover:bg-slate-800/60 transition">{h}</div>
+                  <div key={i} className="tabular-nums px-2 py-1 rounded-md bg-slate-200 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-800/60 transition">{h}</div>
                 ))
               )}
             </div>

@@ -11,13 +11,33 @@ export function getGreeting(date: Date): { label: string; kind: GreetingKind } {
   return { label: 'ليلة سعيدة', kind: 'night' }
 }
 
-/** انحراف البنك = إجمالي البنك (مدى+فيزا+ماستر+تحويل) − اجمالى الموازنه */
+// ─── معادلات التقفيلة (مراجعة نهائية) ─────────────────────────────────────
+//
+// 1) بنك نزيل (محسوب تلقائياً، للعرض فقط):
+//    بنك نزيل = مدى + فيزا + ماستر كارد (تحويل بنكي للعرض فقط — لا يدخل في المعادلات)
+//
+// 2) انحراف البنك:
+//    انحراف البنك = بنك نزيل − اجمالى الموازنه (خانة اجمالى الموازنه = programBalanceBank)
+//    (رصيد البنك = خانة يُدخل فيها الرقم يدوياً)
+//
+// 3) انحراف الكاش:
+//    مصروفات فعّالة = مصروفات − تعويض مصروفات (ولا تقل عن 0)
+//    المتوقّع من رصيد البرنامج كاش = كاش + مرسل للخزنة + مصروفات فعّالة
+//    انحراف الكاش = المتوقّع − رصيد البرنامج كاش
+//
+// 4) variance (عند الإغلاق فقط):
+//    المجموع النقدي = كاش + مدى + فيزا + ماستر + تحويل بنكي
+//    رصيد البرنامج الكلي = رصيد البرنامج كاش + رصيد البنك
+//    variance = المجموع النقدي − رصيد البرنامج الكلي
+// ───────────────────────────────────────────────────────────────────────────
+
+/** انحراف البنك = بنك نزيل − اجمالى الموازنه (بنك نزيل = مدى+فيزا+ماستر؛ اجمالى الموازنه = programBalanceBank) */
 export function computeBankVariance(row: ClosureRow): number {
-  const bankTotal = row.mada + row.visa + row.mastercard + row.bankTransfer
-  return Math.round((bankTotal - row.programBalanceBank) * 100) / 100
+  const totalBudget = row.mada + row.visa + row.mastercard
+  return Math.round((totalBudget - row.programBalanceBank) * 100) / 100
 }
 
-/** انحراف الكاش = (كاش + مرسل للخزنة + مصروفات − تعويض مصروفات) − رصيد البرنامج كاش */
+/** انحراف الكاش = (كاش + مرسل للخزنة + مصروفات فعّالة) − رصيد البرنامج كاش */
 export function computeCashVariance(row: ClosureRow): number {
   const cash = row.cash ?? 0
   const sentToTreasury = row.sentToTreasury ?? 0
@@ -28,8 +48,9 @@ export function computeCashVariance(row: ClosureRow): number {
   return Math.round((expectedProgramCash - row.programBalanceCash) * 100) / 100
 }
 
+/** إجمالي الانحراف (كاش+بنك) — يُستخدم عند إغلاق الشفت فقط (تحويل بنكي لا يدخل في المعادلات) */
 export function computeVariance(row: ClosureRow): number {
-  const sum = row.cash + row.mada + row.visa + row.mastercard + row.bankTransfer
+  const sum = row.cash + row.mada + row.visa + row.mastercard
   const program = row.programBalanceCash + row.programBalanceBank
   return Math.round((sum - program) * 100) / 100
 }

@@ -39,20 +39,20 @@ export function Welcome({ onEnter }: WelcomeProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col items-center justify-center p-6">
-      <div className="w-full max-w-md bg-slate-800/60 backdrop-blur-xl rounded-3xl border border-white/20 shadow-2xl p-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-slate-200 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex flex-col items-center justify-center p-6">
+      <div className="w-full max-w-md bg-white dark:bg-slate-800/60 backdrop-blur-xl rounded-3xl border border-slate-400 dark:border-white/20 shadow-xl dark:shadow-2xl p-8">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-primary-500 font-cairo mb-2">أهلاً بك</h1>
-          <p className="text-slate-400 font-cairo">اكتب اسمك للدخول</p>
+          <p className="text-slate-800 dark:text-slate-400 font-cairo">اكتب اسمك للدخول</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-5">
           {error && (
-            <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/40 text-red-300 text-sm font-cairo">
+            <div className="p-3 rounded-xl bg-red-50 dark:bg-red-500/20 border border-red-200 dark:border-red-500/40 text-red-700 dark:text-red-300 text-sm font-cairo">
               {error}
             </div>
           )}
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-slate-300 mb-2 font-cairo">
+            <label htmlFor="name" className="block text-sm font-medium text-slate-800 dark:text-slate-300 mb-2 font-cairo">
               الاسم (حروف فقط)
             </label>
             <input
@@ -61,7 +61,7 @@ export function Welcome({ onEnter }: WelcomeProps) {
               value={name}
               onChange={handleChange}
               placeholder="أدخل اسمك"
-              className="w-full px-4 py-3 rounded-xl bg-slate-900/80 border border-white/20 text-white placeholder-slate-500 focus:border-primary-500/50 focus:ring-1 focus:ring-primary-500/25 focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 font-cairo"
+              className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-900/80 border border-slate-400 dark:border-white/20 text-slate-900 dark:text-white placeholder-slate-600 dark:placeholder-slate-500 focus:border-primary-500/50 focus:ring-1 focus:ring-primary-500/25 focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 font-cairo"
               autoComplete="off"
               autoFocus
             />
@@ -69,7 +69,7 @@ export function Welcome({ onEnter }: WelcomeProps) {
           <button
             type="submit"
             disabled={!canSubmit}
-            className="w-full py-3.5 rounded-xl font-bold font-cairo bg-primary-500 hover:bg-primary-400 text-white disabled:opacity-40 disabled:cursor-not-allowed transition focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-800 focus-visible:outline-none"
+            className="w-full py-3.5 rounded-xl font-bold font-cairo bg-primary-500 hover:bg-primary-600 text-white disabled:opacity-40 disabled:cursor-not-allowed transition focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-800 focus-visible:outline-none"
           >
             دخول
           </button>

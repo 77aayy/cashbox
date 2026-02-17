@@ -1,6 +1,14 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
   <head>
+    <script>
+      (function() {
+        var t = localStorage.getItem('cashbox_theme');
+        var isDark = t === 'dark' || (t !== 'light' && true);
+        document.documentElement.classList.toggle('dark', isDark);
+        document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+      })();
+    </script>
     <meta charset="UTF-8" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />

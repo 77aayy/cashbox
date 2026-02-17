@@ -109,12 +109,14 @@ const ARABIC_DECIMAL = '\u066B'
 
 /**
  * تحويل نص مبلغ إلى رقم — يدعم:
- * - نقطة كفاصلة آلاف: 10.000 = 10000 ، 1.500 = 1500
- * - فاصلة كفاصلة عشرية: 695,99 = 695.99
- * - نقطة كفاصلة عشرية: 695.99 أو 10.5
+ * - 6967.5 SAR أو SAR 6967.5 (الرقم ثم SAR أو العكس)
+ * - ر.س / ريال قبل أو بعد الرقم
+ * - نقطة كفاصلة آلاف: 10.000 = 10000
+ * - فاصلة عشرية: 695,99 = 695.99
  */
 function parseAmount(str: string): number {
-  const raw = (str || '').toString().trim()
+  let raw = (str || '').toString().trim()
+  raw = raw.replace(/\s*SAR\s*/gi, ' ').replace(/\s*ر\.?\s*س\.?\s*/g, ' ').replace(/\s*ريال\s*(سعودي)?\s*/gi, ' ').trim()
   const normalized = normalizeArabicDigits(raw)
   let numStr = normalized.replace(ARABIC_DECIMAL, '.').replace(/[^\d.,\-]/g, '')
   if (!numStr) return 0
@@ -140,15 +142,70 @@ function parseAmount(str: string): number {
   return Number.isFinite(num) ? num : 0
 }
 
-/** طريقة الدفع في الملف → حقل الصف */
+/** طريقة الدفع في الملف → حقل الصف (يُستخرج فقط: مدى، فيزا، ماستر كارد، تحويل بنكي) */
 const METHOD_MAP: Record<string, 'cash' | 'mada' | 'visa' | 'mastercard' | 'bankTransfer'> = {
   مدى: 'mada',
   فيزا: 'visa',
   'ماستر كارد': 'mastercard',
   'ماستركارد': 'mastercard',
-  كاش: 'cash',
   'تحويل بنكي': 'bankTransfer',
   تحويل: 'bankTransfer',
+}
+/** استبعاد صريح: لا نأخذ قيماً من هذه الطرق (شيك، أمريكان إكسبريس، نقداً) */
+const EXCLUDED_METHODS = ['شيك', 'أمريكان إكسبريس', 'امريكان اكسبريس', 'نقداً', 'نقدا', 'كاش']
+function isExcludedMethod(methodStr: string): boolean {
+  const n = methodStr.replace(/\s+/g, ' ').trim()
+  return EXCLUDED_METHODS.some((ex) => n === ex || n.includes(ex))
+}
+
+/** استخراج حسب الصفوف: الصف اللي فيه مدى نأخذ الخانة المقابلة (أول مبلغ في نفس الصف). بدون اعتماد على أعمدة ثابتة */
+function extractSumsByRows(
+  data: unknown[][],
+  sheet: Record<string, { w?: string; v?: number }>,
+  startRow: number
+): { sums: ExcelSums; counts: ExcelCounts; details: ExcelDetails } {
+  const sums = { ...EMPTY_SUMS }
+  const counts = { ...EMPTY_COUNTS }
+  const details: ExcelDetails = { mada: [], visa: [], mastercard: [], bankTransfer: [] }
+  const maxRows = Math.min(data.length, 500)
+  for (let r = startRow; r < maxRows; r++) {
+    const row = data[r] as (string | number | undefined)[]
+    if (!row || !Array.isArray(row)) continue
+    const maxCol = Math.min(Math.max(row.length, 4), 120)
+    let methodField: 'mada' | 'visa' | 'mastercard' | 'bankTransfer' | null = null
+    let methodCol = -1
+    for (let c = 0; c < maxCol; c++) {
+      const raw = sheet ? getCellText(sheet, row, r, c) : (row[c] ?? '').toString().trim()
+      const n = normalizeHeaderCell(raw)
+      if (!n) continue
+      if (isExcludedMethod(n)) continue
+      const field = (METHOD_MAP as Record<string, string>)[n] ?? (n.includes('مدى') ? 'mada' : null)
+      if (field && field !== 'cash') {
+        methodField = field as 'mada' | 'visa' | 'mastercard' | 'bankTransfer'
+        methodCol = c
+        break
+      }
+    }
+    if (methodField == null) continue
+    if (methodField === 'cash') continue
+    let amountVal = 0
+    for (let c = 0; c < maxCol; c++) {
+      if (c === methodCol) continue
+      const raw = sheet ? getCellText(sheet, row, r, c) : (row[c] ?? '').toString().trim()
+      const val = parseAmount(raw)
+      if (val > 0 && val <= MAX_SINGLE_AMOUNT) {
+        amountVal = val
+        break
+      }
+    }
+    if (amountVal <= 0) continue
+    const methodStr = (row[methodCol] ?? '').toString().trim()
+    if (methodStr.includes('إجمالي') || methodStr.includes('مجموع') || methodStr.includes('المجموع')) continue
+    sums[methodField] += amountVal
+    counts[methodField] += 1
+    details[methodField].push({ date: new Date(0), amount: amountVal, employeeName: undefined, purpose: undefined })
+  }
+  return { sums, counts, details }
 }
 
 export interface ExcelSums {
@@ -220,19 +277,178 @@ interface ColumnIndices {
   purpose: number
 }
 
-/** البحث عن أول صف يبدو صف عناوين (يحتوي "المبلغ" و"طريقة الدفع" أو "التاريخ") */
-function findHeaderRow(data: unknown[][]): number {
-  for (let r = 0; r < Math.min(data.length, 50); r++) {
-    const row = data[r] as (string | number | undefined)[]
-    let hasAmount = false
-    let hasMethodOrDate = false
-    const maxCol = Math.min(row?.length ?? 0, 60)
-    for (let c = 0; c < maxCol; c++) {
-      const cell = (row[c] ?? '').toString().trim()
-      if (cell.includes('المبلغ') || cell.includes('قيمة السند') || (cell.includes('قيمة') && !cell.includes('رقم السند'))) hasAmount = true
-      if (cell.includes('طريقة الدفع') || cell.includes('التاريخ') || cell.includes('الوقت')) hasMethodOrDate = true
+/** تطبيع نص عنوان من الإكسل (علامات RTL/مسافات/أرقام عربية/أحرف عرض صفر) لتحسين المطابقة. إزالة SAR حتى لا تؤثر على مطابقة العناوين */
+function normalizeHeaderCell(val: unknown): string {
+  let s = (val ?? '').toString()
+  s = s
+    .replace(/\u200e/g, '')
+    .replace(/\u200f/g, '')
+    .replace(/\u202a|\u202b|\u202c/g, '')
+    .replace(/\u200b|\u200c|\u200d|\ufeff/g, '')
+    .replace(/\s+/g, ' ')
+  s = s.replace(/SAR/gi, '').replace(/ر\.?\s*س\.?/g, '').replace(/ريال\s*(سعودي)?/g, '')
+  return s.trim()
+}
+
+/** قراءة نص الخلية من الورقة (القيمة المعروضة .w أولاً) لتحسين التعرف على العناوين */
+function getCellText(
+  sheet: Record<string, { w?: string; v?: number }>,
+  row: (string | number | undefined)[],
+  r: number,
+  c: number
+): string {
+  const ref = XLSX.utils.encode_cell({ r, c })
+  const raw = sheet[ref]
+  if (raw != null) {
+    if (typeof raw.w === 'string' && raw.w.trim()) return raw.w.trim()
+    if (typeof raw.v === 'number' && !Number.isNaN(raw.v)) return String(raw.v)
+    if (typeof (raw as { v?: string }).v === 'string') return (raw as { v: string }).v.trim()
+  }
+  const fromRow = row[c]
+  return (fromRow ?? '').toString().trim()
+}
+
+/** التحقق من أن نص الخلية يطابق "طريقة الدفع" أو "المقبوضات" (جدول حسب طريقة الدفع) */
+function cellHasPaymentMethodHeader(t: string): boolean {
+  const n = normalizeHeaderCell(t)
+  return (
+    n.includes('طريقةالدفع') ||
+    n.includes('طريقة الدفع') ||
+    (n.includes('الدفع') && n.length < 30) ||
+    (n.includes('طريقة') && (n.includes('دفع') || n.includes('الدفع')))
+  )
+}
+function cellHasAmountHeader(t: string): boolean {
+  const n = normalizeHeaderCell(t)
+  return (
+    n.includes('المبلغ') ||
+    n.includes('قيمةالسند') ||
+    n.includes('قيمة السند') ||
+    n.includes('المقبوضات') ||
+    n.includes('مقبوضات') ||
+    n.includes('قبوضات') ||
+    n.includes('المصروفات') ||
+    n.includes('مصروفات') ||
+    n.includes('الصافي') ||
+    n.includes('صافي') ||
+    n.includes('مبلغ') ||
+    (n.includes('قيمة') && !n.includes('رقم') && n.length < 35)
+  )
+}
+
+/** بناء مصفوفة البيانات من كل خلايا الورقة (لتضمين الجدول السفلي حتى لو كان نطاق !ref جزئياً) */
+function buildDataFromSheet(sheet: Record<string, { w?: string; v?: number }>): unknown[][] {
+  const rowMap = new Map<number, Map<number, string>>()
+  for (const key of Object.keys(sheet)) {
+    if (key.startsWith('!')) continue
+    const decoded = XLSX.utils.decode_cell(key)
+    if (decoded == null || typeof decoded.r !== 'number') continue
+    const r = decoded.r
+    const c = decoded.c
+    const cell = sheet[key] as { w?: string; v?: string | number } | undefined
+    const text =
+      (cell && typeof cell.w === 'string' && cell.w.trim()) ||
+      (cell && typeof cell.v === 'string' && cell.v.trim()) ||
+      (cell && typeof cell.v === 'number' && !Number.isNaN(cell.v) ? String(cell.v) : '')
+    if (!rowMap.has(r)) rowMap.set(r, new Map())
+    rowMap.get(r)!.set(c, text)
+  }
+  const maxR = rowMap.size === 0 ? 0 : Math.max(...rowMap.keys())
+  const data: unknown[][] = []
+  for (let r = 0; r <= maxR; r++) {
+    const colMap = rowMap.get(r)
+    const maxC = colMap ? Math.max(...colMap.keys()) : 0
+    const row: unknown[] = []
+    for (let c = 0; c <= maxC; c++) {
+      row.push(colMap?.get(c) ?? '')
     }
-    if (hasAmount && hasMethodOrDate) return r
+    data.push(row)
+  }
+  return data
+}
+
+/** البحث عن صف العناوين بمسح الورقة مباشرة (للجدول السفلي "حسب طريقة الدفع") */
+function findHeaderRowByScanningSheet(sheet: Record<string, { w?: string; v?: number }>): number {
+  const rowTexts = new Map<number, string[]>()
+  for (const key of Object.keys(sheet)) {
+    if (key.startsWith('!')) continue
+    const decoded = XLSX.utils.decode_cell(key)
+    if (decoded == null || typeof decoded.r !== 'number') continue
+    const r = decoded.r
+    const c = decoded.c
+    const cell = sheet[key] as { w?: string; v?: string | number } | undefined
+    const text =
+      (cell && typeof cell.w === 'string' && cell.w.trim()) ||
+      (cell && typeof cell.v === 'string' && cell.v.trim()) ||
+      (cell && typeof cell.v === 'number' && !Number.isNaN(cell.v) ? String(cell.v) : '')
+    if (!text) continue
+    if (!rowTexts.has(r)) rowTexts.set(r, [])
+    const arr = rowTexts.get(r)!
+    while (arr.length <= c) arr.push('')
+    arr[c] = text
+  }
+  const rows = Array.from(rowTexts.keys()).sort((a, b) => a - b)
+  for (const r of rows) {
+    const cells = rowTexts.get(r) || []
+    let hasAmount = false
+    let hasMethod = false
+    for (const cell of cells) {
+      const n = normalizeHeaderCell(cell)
+      if (!n) continue
+      if (cellHasAmountHeader(n)) hasAmount = true
+      if (cellHasPaymentMethodHeader(n)) hasMethod = true
+    }
+    if (hasAmount && hasMethod) return r
+  }
+  return -1
+}
+
+/** قيم طريقة الدفع في صفوف البيانات (جدول حسب طريقة الدفع) */
+const PAYMENT_METHOD_VALUES = ['مدى', 'فيزا', 'ماستر كارد', 'ماستركارد', 'تحويل بنكي', 'تحويل', 'نقداً', 'نقدا', 'شيك', 'أمريكان إكسبريس']
+function cellIsPaymentMethodValue(t: string): boolean {
+  const n = normalizeHeaderCell(t)
+  if (!n || n.length > 50) return false
+  return PAYMENT_METHOD_VALUES.some((p) => n === p || n.includes(p))
+}
+
+/** احتياطي: البحث عن أول صف بيانات يحتوي "مدى" أو "فيزا" أو "ماستر كارد" أو "تحويل بنكي" فيكون الصف السابق هو صف العناوين */
+function findHeaderRowByDataRow(
+  data: unknown[][],
+  sheet?: Record<string, { w?: string; v?: number }>
+): number {
+  const maxRows = Math.min(data.length, 200)
+  for (let r = 1; r < maxRows; r++) {
+    const row = data[r] as (string | number | undefined)[]
+    if (!row || !Array.isArray(row)) continue
+    const maxCol = Math.min(Math.max(row.length, 50), 120)
+    for (let c = 0; c < maxCol; c++) {
+      const rawText = sheet ? getCellText(sheet, row, r, c) : (row[c] ?? '').toString().trim()
+      if (cellIsPaymentMethodValue(rawText)) return r - 1
+    }
+  }
+  return -1
+}
+
+/** البحث عن أول صف يبدو صف عناوين: طريقة الدفع + عمود مبلغ (المبلغ أو المقبوضات). يدعم ورقة الإكسل لقراءة .w */
+function findHeaderRow(
+  data: unknown[][],
+  sheet?: Record<string, { w?: string; v?: number }>
+): number {
+  const maxRows = Math.min(data.length, 200)
+  for (let r = 0; r < maxRows; r++) {
+    const row = data[r] as (string | number | undefined)[]
+    if (!row || !Array.isArray(row)) continue
+    const maxCol = Math.min(Math.max(row.length, 50), 120)
+    let hasAmount = false
+    let hasMethod = false
+    for (let c = 0; c < maxCol; c++) {
+      const rawText = sheet ? getCellText(sheet, row, r, c) : (row[c] ?? '').toString().trim()
+      const cell = normalizeHeaderCell(rawText)
+      if (!cell) continue
+      if (cellHasAmountHeader(cell)) hasAmount = true
+      if (cellHasPaymentMethodHeader(cell)) hasMethod = true
+    }
+    if (hasAmount && hasMethod) return r
   }
   return -1
 }
@@ -281,19 +497,25 @@ function detectColumnIndices(headerRow: (string | number | undefined)[]): Column
   let directionCol = -1
   let employeeNameCol = -1
   let purposeCol = -1
-  const maxCol = Math.min(headerRow?.length ?? 0, 60)
+  const maxCol = Math.min(Math.max(headerRow?.length ?? 0, 10), 120)
+  /** تفضيل عمود المقبوضات للمبالغ عند وجوده (استخراج مدى/فيزا/ماستر/تحويل من المقبوضات فقط) */
+  let receiptsCol = -1
   for (let c = 0; c < maxCol; c++) {
-    const cell = (headerRow[c] ?? '').toString().trim()
+    const raw = headerRow[c]
+    const cell = normalizeHeaderCell(raw)
     if ((cell.includes('الوقت') || cell.includes('التاريخ')) && dateCol < 0) dateCol = c
-    if (methodCol < 0 && (cell.includes('طريقة الدفع') || (cell.includes('طريقة') && (cell.includes('دفع') || cell.includes('الدفع'))))) methodCol = c
-    if (cell.includes('الإتجاه') || cell.includes('الاتجاه')) directionCol = c
+    if (methodCol < 0 && cellHasPaymentMethodHeader(cell)) methodCol = c
+    if ((cell.includes('الإتجاه') || cell.includes('الاتجاه')) && directionCol < 0) directionCol = c
     if (employeeNameCol < 0 && isEmployeeHeader(cell)) employeeNameCol = c
     if (purposeCol < 0 && isPurposeHeader(cell)) purposeCol = c
-    // عمود المبلغ: المبلغ أو قيمة السند فقط — استبعاد عمود "رقم السند" (وليس "قيمة السند")
+    if (cellHasAmountHeader(cell)) {
+      if (cell.includes('المقبوضات') || cell.includes('مقبوضات') || cell.includes('قبوضات')) receiptsCol = c
+      if (amountCol < 0) amountCol = c
+    }
     if (cell.includes('رقم السند') && !cell.includes('قيمة السند')) continue
-    if ((cell.includes('المبلغ') || cell.includes('قيمة السند') || (cell.includes('قيمة') && cell.length < 25)) && amountCol < 0) amountCol = c
   }
-  if (dateCol >= 0 && methodCol >= 0 && amountCol >= 0 && directionCol >= 0)
+  if (receiptsCol >= 0) amountCol = receiptsCol
+  if (methodCol >= 0 && amountCol >= 0)
     return { date: dateCol, method: methodCol, amount: amountCol, direction: directionCol, employeeName: employeeNameCol, purpose: purposeCol }
   return null
 }
@@ -321,19 +543,60 @@ export function parseBankTransactionsExcel(
 ): { sums: ExcelSums; counts: ExcelCounts; details: ExcelDetails; employeeName: string | null; employeeNamesList: string[]; error: string | null } {
   try {
     const wb = XLSX.read(buffer, { type: 'array' })
-    const sheetName = wb.SheetNames[0]
-    if (!sheetName) return { sums: EMPTY_SUMS, counts: EMPTY_COUNTS, details: EMPTY_DETAILS, employeeName: null, employeeNamesList: [], error: 'الملف لا يحتوي على أي sheet' }
-    const sheet = wb.Sheets[sheetName] as Record<string, { w?: string; v?: number }>
-    const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown[][]
-
-    const headerRowIndex = findHeaderRow(data)
+    const sheetNames = wb.SheetNames || []
+    if (sheetNames.length === 0)
+      return { sums: EMPTY_SUMS, counts: EMPTY_COUNTS, details: EMPTY_DETAILS, employeeName: null, employeeNamesList: [], error: 'الملف لا يحتوي على أي sheet' }
+    let data: unknown[][] = []
+    let sheet: Record<string, { w?: string; v?: number }> = {}
+    let sheetName = ''
+    let headerRowIndex = -1
+    for (let i = 0; i < sheetNames.length; i++) {
+      sheetName = sheetNames[i]!
+      sheet = wb.Sheets[sheetName] as Record<string, { w?: string; v?: number }>
+      data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as unknown[][]
+      headerRowIndex = findHeaderRow(data, sheet)
+      if (headerRowIndex < 0) {
+        data = buildDataFromSheet(sheet)
+        headerRowIndex = findHeaderRow(data, sheet)
+      }
+      if (headerRowIndex < 0) headerRowIndex = findHeaderRowByScanningSheet(sheet)
+      if (headerRowIndex >= 0) {
+        if (data.length <= headerRowIndex) data = buildDataFromSheet(sheet)
+        break
+      }
+    }
+    if (headerRowIndex >= 0 && data.length <= headerRowIndex) {
+      data = buildDataFromSheet(sheet)
+    }
+    if (headerRowIndex < 0) {
+      headerRowIndex = findHeaderRowByDataRow(data, sheet)
+    }
+    if (headerRowIndex >= 0 && data.length <= headerRowIndex) {
+      data = buildDataFromSheet(sheet)
+    }
     if (headerRowIndex < 0)
-      return { sums: EMPTY_SUMS, counts: EMPTY_COUNTS, details: EMPTY_DETAILS, employeeName: null, employeeNamesList: [], error: 'لم يُعثر على صف العناوين (المبلغ، طريقة الدفع، التاريخ)' }
+      return { sums: EMPTY_SUMS, counts: EMPTY_COUNTS, details: EMPTY_DETAILS, employeeName: null, employeeNamesList: [], error: 'لم يُعثر على صف العناوين (طريقة الدفع، المبلغ أو المقبوضات)' }
 
-    const headerRow = data[headerRowIndex] as (string | number | undefined)[]
-    const cols = detectColumnIndices(headerRow)
-    if (!cols)
-      return { sums: EMPTY_SUMS, counts: EMPTY_COUNTS, details: EMPTY_DETAILS, employeeName: null, employeeNamesList: [], error: 'لم يُحدد أحد الأعمدة: التاريخ، طريقة الدفع، المبلغ، الإتجاه' }
+    const headerDataRow = data[headerRowIndex] as (string | number | undefined)[]
+    /** بناء صف العناوين من القيم المعروضة في الورقة لضمان تطابق أعمدة المبلغ وطريقة الدفع */
+    const headerRow: (string | number | undefined)[] = []
+    for (let c = 0; c < Math.max(headerDataRow?.length ?? 0, 80); c++) {
+      headerRow.push(getCellText(sheet, headerDataRow, headerRowIndex, c) || headerDataRow[c])
+    }
+    let cols = detectColumnIndices(headerRow)
+    /** إذا فشل تحديد الأعمدة نعتمد على الصفوف: الصف اللي فيه مدى نأخذ الخانة المقابلة له */
+    const useRowBased = !cols
+    if (useRowBased) {
+      const byRows = extractSumsByRows(data, sheet, headerRowIndex + 1)
+      return {
+        sums: byRows.sums,
+        counts: byRows.counts,
+        details: byRows.details,
+        employeeName: null,
+        employeeNamesList: [],
+        error: null,
+      }
+    }
 
     const sums = { ...EMPTY_SUMS }
     const counts = { ...EMPTY_COUNTS }
@@ -344,16 +607,17 @@ export function parseBankTransactionsExcel(
 
     for (let r = headerRowIndex + 1; r < data.length; r++) {
       const row = data[r] as (string | number | undefined)[]
-      const dateCell = row[cols.date]
       const methodStr = (row[cols.method] ?? '').toString().trim()
-      const amountCell = row[cols.amount]
-      const direction = (row[cols.direction] ?? '').toString().trim()
-      const dirNorm = direction.replace(/\u200e/g, '').replace(/\u200f/g, '').trim()
-
       if (!methodStr) continue
-      const dt = parseDateFromCell(dateCell)
-      if (!dt || dt.getTime() < afterTime) continue
-      if (dirNorm !== 'داخل') continue
+      if (isExcludedMethod(methodStr)) continue
+      const dateCell = cols.date >= 0 ? row[cols.date] : undefined
+      const parsedDate = cols.date >= 0 ? parseDateFromCell(dateCell) : null
+      if (cols.date >= 0 && (!parsedDate || parsedDate.getTime() < afterTime)) continue
+      const dt = parsedDate ?? new Date(0)
+      const direction = cols.direction >= 0 ? (row[cols.direction] ?? '').toString().trim() : ''
+      const dirNorm = direction.replace(/\u200e/g, '').replace(/\u200f/g, '').trim()
+      if (cols.direction >= 0 && dirNorm !== 'داخل') continue
+      const amountCell = row[cols.amount]
 
       if (cols.employeeName >= 0) {
         const empCellRef = XLSX.utils.encode_cell({ r, c: cols.employeeName })
