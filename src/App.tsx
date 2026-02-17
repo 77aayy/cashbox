@@ -53,15 +53,13 @@ export default function App() {
     applyTheme(theme)
   }, [theme])
 
-  /** التحقق من انتهاء الجلسة كل دقيقة — مدة الجلسة 6 ساعات */
-  useEffect(() => {
-    if (!name) return
-    const check = () => {
-      if (isSessionExpired()) handleExit()
-    }
-    const id = setInterval(check, 60_000)
-    return () => clearInterval(id)
-  }, [name, handleExit])
+  const handleExit = useCallback(() => {
+    sessionStorage.removeItem(NAME_KEY)
+    sessionStorage.removeItem(BRANCH_KEY)
+    sessionStorage.removeItem(SESSION_START_KEY)
+    setName(null)
+    setBranch('corniche')
+  }, [])
 
   const handleEnter = (n: string, b: Branch) => {
     sessionStorage.setItem(NAME_KEY, n)
@@ -71,18 +69,20 @@ export default function App() {
     setBranch(b)
   }
 
-  const handleExit = useCallback(() => {
-    sessionStorage.removeItem(NAME_KEY)
-    sessionStorage.removeItem(BRANCH_KEY)
-    sessionStorage.removeItem(SESSION_START_KEY)
-    setName(null)
-    setBranch('corniche')
-  }, [])
-
   const handleSwitchBranch = (newBranch: Branch) => {
     sessionStorage.setItem(BRANCH_KEY, newBranch)
     setBranch(newBranch)
   }
+
+  /** التحقق من انتهاء الجلسة كل دقيقة — مدة الجلسة 6 ساعات */
+  useEffect(() => {
+    if (!name) return
+    const check = () => {
+      if (isSessionExpired()) handleExit()
+    }
+    const id = setInterval(check, 60_000)
+    return () => clearInterval(id)
+  }, [name, handleExit])
 
   if (!ready) {
     return (
