@@ -1162,7 +1162,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
           className="rounded-2xl sm:rounded-3xl overflow-x-auto overflow-hidden flex flex-col border-2 border-stone-400 dark:border-amber-500/20 bg-stone-50 dark:bg-slate-800/30 backdrop-blur-sm shadow-[0_4px_24px_rgba(0,0,0,0.08),0_0_0_1px_rgba(41,37,36,0.12)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] min-h-[280px] sm:min-h-[320px]"
         >
           <div className="cashbox-table-scroll overflow-x-auto scrollbar-thin" style={{ scrollbarGutter: 'stable' }}>
-            <table className="w-full text-xs sm:text-sm border-collapse table-fixed" style={{ tableLayout: 'fixed', width: '100%', minWidth: '880px' }}>
+            <table className="w-full text-xs sm:text-sm border-separate table-fixed" style={{ tableLayout: 'fixed', width: '100%', minWidth: '880px', borderSpacing: 0 }}>
               <colgroup>
                 <col style={{ width: '3%' }} />
                 <col style={{ width: '2.5%' }} />
@@ -1181,7 +1181,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                 <col style={{ width: '6.35%' }} />
                 <col style={{ width: '12%' }} />
               </colgroup>
-              <thead className="border-b-2 border-stone-500 dark:border-amber-500/20 [&_th]:sticky [&_th]:top-14 [&_th]:z-[11] [&_th]:bg-stone-100 [&_th]:dark:bg-amber-500/[0.08] [&_th]:backdrop-blur-md [&_th]:shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
+              <thead className="border-b-2 border-stone-500 dark:border-amber-500/20">
                 <tr className="h-12 sm:h-14 bg-stone-100 dark:bg-amber-500/[0.08]">
                   <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">تحديد</th>
                   <th className="px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">م</th>
@@ -1243,7 +1243,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                     onShowVarianceExplanation={(type, row) => setVarianceExplanationModal({ type, row })}
                     currentUserName={name}
                     onClearRow={(id) => setClearRowConfirmId(id)}
-                    isStickyRows={r.id === firstActiveId || (!firstActiveId && idx === 0)}
+                    isStickyRows={false}
                   />
                 ))}
               </tbody>
