@@ -79,14 +79,14 @@ input[type="number"].cashbox-input {
   appearance: textfield;
 }
 
-/* تثبيت أول 3 صفوف في جدول التقفيل: رؤوس الأعمدة + صف اسم الموظف + صف الإدخال النشط */
+/* تثبيت أول 3 صفوف عند مستوى الصفحة (مثل الترويسة): رؤوس الأعمدة + صف اسم الموظف + صف الإدخال النشط — يبقون ظاهرين عند السكرول للأسفل */
 .cashbox-table-scroll {
-  overflow-anchor: none; /* منع تأخير التمرير */
+  overflow-anchor: none;
 }
 .cashbox-table-scroll thead th {
   position: -webkit-sticky;
   position: sticky;
-  top: 0;
+  top: 3.5rem; /* تحت ترويسة الصفحة (~56px) */
   z-index: 11;
 }
 .cashbox-table-scroll .sticky-label-row td {

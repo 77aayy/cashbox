@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title رفع المشروع إلى GitHub
+title رفع على GitHub
 
 cd /d "%~dp0"
 
@@ -21,12 +21,21 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo رفع إلى GitHub...
+echo رفع الكود إلى GitHub (main)...
 git push origin
 if errorlevel 1 (
   echo فشل الـ push. تحقق من الاتصال أو صلاحيات GitHub.
   pause
   exit /b 1
+)
+
+echo.
+echo نشر الموقع على GitHub Pages...
+call npm run deploy
+if errorlevel 1 (
+  echo فشل النشر. تحقق من الاتصال أو صلاحيات GitHub.
+) else (
+  echo تم النشر — الموقع محدّث: https://77aayy.github.io/cashbox/
 )
 
 echo.

@@ -288,9 +288,9 @@ export function ClosureRowComp({
 
   const labelDateTime = isClosed && row.closedAt ? formatDateTime(row.closedAt) : formatDateTime(liveNow)
 
-  /* ثابتان عند التمرير: صف اسم الموظف تحت الترويسة (top = ارتفاع thead)، ثم صف الإدخال تحته (top = thead + label) */
-  const stickyLabelClass = isStickyRows ? 'sticky top-12 sm:top-14 z-[9] bg-stone-50 dark:bg-slate-800/95 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] border-b border-stone-300 dark:border-amber-500/15' : ''
-  const stickyDataClass = isStickyRows ? 'sticky top-[5rem] sm:top-[5.75rem] z-[9] bg-white dark:bg-slate-800/95 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] border-b border-stone-400 dark:border-amber-500/15' : ''
+  /* ثابتان عند تمرير الصفحة: تحت الترويسة (top-14=56px) + thead (~48px) + label (~36px) — ليبقيا ظاهرين عند السكرول للأسفل */
+  const stickyLabelClass = isStickyRows ? 'sticky top-[6.5rem] sm:top-[7rem] z-[9] bg-stone-50 dark:bg-slate-800/95 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] border-b border-stone-300 dark:border-amber-500/15' : ''
+  const stickyDataClass = isStickyRows ? 'sticky top-[8.75rem] sm:top-[9.25rem] z-[9] bg-white dark:bg-slate-800/95 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] border-b border-stone-400 dark:border-amber-500/15' : ''
 
   return (
     <>
