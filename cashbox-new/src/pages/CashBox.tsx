@@ -60,6 +60,15 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'warning' | 'info'; autoHideMs?: number } | null>(null)
   /** تأكيد الترحيل عندما يوجد رقم في الخانة (كاش أو مدى أو فيزا أو تحويل بنكي) */
   const [transferConfirm, setTransferConfirm] = useState<{ amount: number; currentValue: number; field: TransferField } | null>(null)
+  /** تأكيد ترحيل العمليات البنكية (مدى/فيزا/ماستر) عند وجود قيم في الخانات */
+  const [bankTransferConfirm, setBankTransferConfirm] = useState<{
+    mada: number
+    visa: number
+    mastercard: number
+    currentMada: number
+    currentVisa: number
+    currentMaster: number
+  } | null>(null)
   /** صفوف محددة للطباعة */
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set())
   /** حذف صف: خطوة التأكيد ثم إدخال كود الأدمن */
@@ -82,8 +91,8 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
   const [lastExcelDetails, setLastExcelDetails] = useState<ExcelDetails | null>(null)
   /** قائمة أسماء الموظفين من آخر استيراد (عند "أكثر من موظف") لعرضها عند النقر */
   const [lastExcelEmployeeNamesList, setLastExcelEmployeeNamesList] = useState<string[]>([])
-  /** نافذة تفاصيل عمليات طريقة دفع معيّنة (مدى، فيزا، ...) */
-  const [excelDetailModal, setExcelDetailModal] = useState<keyof ExcelDetails | null>(null)
+  /** نافذة سجل التغيير (من إكسل / مرحّل / معدّل يدوياً) لعمود في صف معيّن */
+  const [excelDetailModal, setExcelDetailModal] = useState<{ field: keyof ExcelDetails; rowId: string } | null>(null)
   /** نافذة أسماء الموظفين (عند النقر على "أكثر من موظف") */
   const [showEmployeeNamesModal, setShowEmployeeNamesModal] = useState(false)
   /** نافذة شرح سبب انحراف الكاش أو البنك (نوع + الصف) */
@@ -895,6 +904,18 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
       const curMada = (activeRow.mada as number) ?? 0
       const curVisa = (activeRow.visa as number) ?? 0
       const curMaster = (activeRow.mastercard as number) ?? 0
+      const needConfirm = (curMada > 0 && mada > 0) || (curVisa > 0 && visa > 0) || (curMaster > 0 && mastercard > 0)
+      if (needConfirm) {
+        setBankTransferConfirm({
+          mada,
+          visa,
+          mastercard,
+          currentMada: curMada,
+          currentVisa: curVisa,
+          currentMaster: curMaster,
+        })
+        return
+      }
       handleUpdate(firstActiveId, 'mada', curMada + mada)
       handleUpdate(firstActiveId, 'visa', curVisa + visa)
       handleUpdate(firstActiveId, 'mastercard', curMaster + mastercard)
@@ -906,6 +927,24 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
     },
     [firstActiveId, rows, handleUpdate]
   )
+
+  const handleBankTransferConfirmYes = useCallback(() => {
+    if (!bankTransferConfirm || !firstActiveId) return
+    const { mada, visa, mastercard, currentMada, currentVisa, currentMaster } = bankTransferConfirm
+    handleUpdate(firstActiveId, 'mada', currentMada + mada)
+    handleUpdate(firstActiveId, 'visa', currentVisa + visa)
+    handleUpdate(firstActiveId, 'mastercard', currentMaster + mastercard)
+    const parts: string[] = []
+    if (mada > 0) parts.push(`مدى ${formatCurrency(mada)}`)
+    if (visa > 0) parts.push(`فيزا ${formatCurrency(visa)}`)
+    if (mastercard > 0) parts.push(`ماستر ${formatCurrency(mastercard)}`)
+    setToast({ msg: `تم ترحيل العمليات البنكية: ${parts.join('، ') || '—'}`, type: 'success' })
+    setBankTransferConfirm(null)
+  }, [bankTransferConfirm, firstActiveId, handleUpdate])
+
+  const handleBankTransferConfirmNo = useCallback(() => {
+    setBankTransferConfirm(null)
+  }, [])
 
   const handleTransferConfirmYes = useCallback(() => {
     if (!transferConfirm || !firstActiveId) return
@@ -937,8 +976,8 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
   )
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 dark:bg-slate-900 dark:text-slate-200 font-cairo page-bg-pattern">
-      <header className="sticky top-0 z-40 border-b border-slate-400 dark:border-white/10 bg-white dark:bg-slate-900/95 backdrop-blur shadow-sm">
+    <div className="min-h-screen page-bg-warm dark:bg-slate-900 text-stone-900 dark:text-slate-200 font-cairo page-bg-pattern">
+      <header className="sticky top-0 z-40 border-b border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-900/95 backdrop-blur shadow-sm">
         <div className="mx-auto w-full max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] px-4 py-2 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             {(() => {
@@ -972,19 +1011,19 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
               }
               const isNight = kind === 'night'
               return (
-                <h1 className="flex items-center gap-2 py-1.5 px-3 rounded-xl border border-slate-400 dark:border-white/10 bg-slate-200 dark:bg-slate-800/50 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
-                  <span className={`flex items-center justify-center w-8 h-8 rounded-lg ${isNight ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'}`}>
+                <h1 className="flex items-center gap-2 py-1.5 px-3 rounded-xl border border-stone-300 dark:border-white/10 bg-stone-200 dark:bg-slate-800/50 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
+                  <span className={`flex items-center justify-center w-8 h-8 rounded-lg ${isNight ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300' : 'bg-teal-100 text-teal-700 dark:bg-amber-500/15 dark:text-amber-400'}`}>
                     {icons[kind]}
                   </span>
-                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 tracking-tight flex items-center gap-1">
-                    <span className={isNight ? 'text-indigo-700 dark:text-indigo-300/90' : 'text-amber-700 dark:text-amber-400/95'}>{label}</span>
-                    <span className="text-slate-700 dark:text-slate-400 font-normal">،</span>
-                    <span className="text-slate-700 dark:text-slate-400 text-xs font-cairo text-right">{name}</span>
+                  <span className="text-sm font-semibold text-stone-800 dark:text-slate-200 tracking-tight flex items-center gap-1">
+                    <span className={isNight ? 'text-indigo-700 dark:text-indigo-300/90' : 'text-teal-700 dark:text-amber-400/95'}>{label}</span>
+                    <span className="text-stone-600 dark:text-slate-400 font-normal">،</span>
+                    <span className="text-stone-600 dark:text-slate-400 text-xs font-cairo text-right">{name}</span>
                   </span>
                 </h1>
               )
             })()}
-            <div className="relative z-[50] rounded-xl border border-slate-400 dark:border-slate-600/50 bg-slate-200 dark:bg-slate-800/60 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(0,0,0,0.15)]">
+            <div className="relative z-[50] rounded-xl border border-stone-300 dark:border-slate-600/50 bg-stone-200 dark:bg-slate-800/60 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(0,0,0,0.15)]">
               <button
                 ref={themeToggleRef}
                 type="button"
@@ -993,7 +1032,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                   e.stopPropagation()
                   handleThemeToggle()
                 }}
-                className="flex items-center justify-center w-9 h-9 rounded-lg text-slate-700 hover:text-teal-600 hover:bg-teal-500/15 dark:text-slate-400 dark:hover:text-teal-400 dark:hover:bg-teal-500/10 transition cursor-pointer select-none touch-manipulation"
+                className="flex items-center justify-center w-9 h-9 rounded-lg text-stone-700 hover:text-teal-600 hover:bg-teal-500/15 dark:text-slate-400 dark:hover:text-teal-400 dark:hover:bg-teal-500/10 transition cursor-pointer select-none touch-manipulation"
                 title={theme === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'}
                 aria-label={theme === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'}
               >
@@ -1004,11 +1043,11 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                 )}
               </button>
             </div>
-            <div className="rounded-xl border border-slate-400 dark:border-slate-600/50 bg-slate-200 dark:bg-slate-800/60 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(0,0,0,0.15)]">
+            <div className="rounded-xl border border-stone-300 dark:border-slate-600/50 bg-stone-200 dark:bg-slate-800/60 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(0,0,0,0.15)]">
               <button
                 type="button"
                 onClick={onExit}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-800 hover:text-teal-600 hover:bg-teal-500/15 dark:text-slate-400 dark:hover:text-amber-400 dark:hover:bg-amber-500/10 text-xs font-cairo transition"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-stone-800 hover:text-teal-600 hover:bg-teal-500/15 dark:text-slate-400 dark:hover:text-amber-400 dark:hover:bg-amber-500/10 text-xs font-cairo transition"
                 title="تغيير المستخدم"
               >
                 <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1045,9 +1084,9 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                 <span>استخراج قيم</span>
               </button>
             </div>
-            <span className="w-px h-5 bg-slate-400 dark:bg-white/10 rounded-full" aria-hidden="true" />
-            <div className="flex items-center gap-1 rounded-xl border border-amber-300 dark:border-amber-500/25 bg-amber-100 dark:bg-amber-500/10 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(245,158,11,0.08)]">
-              <span className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-200 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400/90 shrink-0" aria-hidden="true">
+            <span className="w-px h-5 bg-stone-300 dark:bg-white/10 rounded-full" aria-hidden="true" />
+            <div className="flex items-center gap-1 rounded-xl border-2 border-teal-300 dark:border-amber-500/25 bg-teal-50 dark:bg-amber-500/10 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(245,158,11,0.08)]">
+              <span className="flex items-center justify-center w-6 h-6 rounded-md bg-teal-200 text-teal-800 dark:bg-amber-500/15 dark:text-amber-400/90 shrink-0" aria-hidden="true">
                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
                   <path d="M16 2v4M8 2v4M3 10h18" />
@@ -1061,15 +1100,15 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
                     filter === f.id
                       ? 'bg-teal-500/20 text-teal-800 border border-teal-600 dark:bg-amber-500/25 dark:text-amber-300 dark:border-amber-500/40 shadow-sm'
-                      : 'text-slate-700 border border-transparent hover:bg-slate-300 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-300'
+                      : 'text-stone-700 border border-transparent hover:bg-stone-300 hover:text-stone-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-300'
                   }`}
                 >
                   {f.label}
                 </button>
               ))}
             </div>
-            <span className="w-px h-5 bg-slate-400 dark:bg-white/10 rounded-full" aria-hidden="true" />
-            <div className="flex items-center gap-1.5 rounded-xl border border-slate-400 dark:border-sky-500/25 bg-slate-200 dark:bg-sky-500/10 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(14,165,233,0.08)]">
+            <span className="w-px h-5 bg-stone-300 dark:bg-white/10 rounded-full" aria-hidden="true" />
+            <div className="flex items-center gap-1.5 rounded-xl border border-stone-300 dark:border-sky-500/25 bg-stone-200 dark:bg-sky-500/10 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(14,165,233,0.08)]">
               <button
                 type="button"
                 onClick={handlePrintAll}
@@ -1106,54 +1145,54 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
       <main className="mx-auto w-full max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] px-4 py-4 flex flex-col gap-4">
         {/* جدول الصفوف — تصميم 2026: زجاجية خفيفة، تباين ناعم، تسلسل بصري واضح */}
         <div
-          className="rounded-3xl overflow-hidden flex flex-col border border-slate-400 dark:border-white/[0.06] bg-white dark:bg-slate-800/30 backdrop-blur-sm shadow-[0_4px_24px_rgba(0,0,0,0.1),0_0_0_1px_rgba(0,0,0,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.24),0_0_0_1px_rgba(255,255,255,0.04)_inset]"
+          className="rounded-3xl overflow-hidden flex flex-col border-2 border-stone-400 dark:border-amber-500/20 bg-stone-50 dark:bg-slate-800/30 backdrop-blur-sm shadow-[0_4px_24px_rgba(0,0,0,0.08),0_0_0_1px_rgba(41,37,36,0.12)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)]"
           style={{ minHeight: ROWS_PER_PAGE * 52 + 48 + 56 + 44 }}
         >
           <div className="overflow-x-auto flex-1 min-h-0 scrollbar-thin" style={{ scrollbarGutter: 'stable' }}>
-            <table className="w-full text-sm border-collapse table-fixed" style={{ tableLayout: 'fixed', width: '100%' }}>
+            <table className="w-full text-sm border-collapse table-fixed" style={{ tableLayout: 'fixed', width: '100%', minWidth: '100%' }}>
               <colgroup>
                 <col style={{ width: '3%' }} />
                 <col style={{ width: '2.5%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '10%' }} />
+                <col style={{ width: '6.35%' }} />
+                <col style={{ width: '6.35%' }} />
+                <col style={{ width: '6.35%' }} />
+                <col style={{ width: '6.35%' }} />
+                <col style={{ width: '6.35%' }} />
+                <col style={{ width: '6.35%' }} />
+                <col style={{ width: '6.35%' }} />
+                <col style={{ width: '6.35%' }} />
+                <col style={{ width: '6.35%' }} />
+                <col style={{ width: '6.35%' }} />
+                <col style={{ width: '6.35%' }} />
+                <col style={{ width: '6.35%' }} />
+                <col style={{ width: '6.35%' }} />
+                <col style={{ width: '12%' }} />
               </colgroup>
-              <thead className="sticky top-0 z-10 bg-slate-200 dark:bg-slate-800/95 backdrop-blur-md border-b border-slate-400 dark:border-white/[0.06] shadow-sm">
+              <thead className="sticky top-0 z-10 bg-stone-100 dark:bg-amber-500/[0.08] backdrop-blur-md border-b-2 border-stone-500 dark:border-amber-500/20 shadow-md dark:shadow-[0_2px_8px_rgba(245,158,11,0.06)]">
                 <tr className="h-14">
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">تحديد</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">م</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">كاش</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo" title="مرسل للخزنة — يدخل في معادلة انحراف الكاش">مرسل للخزنة</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo" title="يُخصم من المصروفات في انحراف الكاش">تعويض مصروفات</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-800 dark:text-slate-300 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">المصروفات</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-teal-700 dark:text-teal-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">رصيد البرنامج كاش</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-bold text-red-700 dark:text-red-400 tracking-tight align-middle border-r border-red-300 dark:border-red-500/20 bg-red-100 dark:bg-red-500/10 font-cairo rounded-sm" title="خانة مهمة: الفرق بين المتوقع والفعلي للكاش">انحراف الكاش</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">مدى</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">فيزا</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">ماستر كارد</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-sky-700 dark:text-sky-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo" title="للعرض فقط — لا يدخل في بنك نزيل ولا انحراف البنك">تحويل بنكي</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-teal-700 dark:text-teal-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo" title="بنك نزيل = مدى + فيزا + ماستر كارد (تحويل بنكي للعرض فقط)">بنك نزيل</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] font-cairo">اجمالى الموازنه</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-bold text-red-700 dark:text-red-400 tracking-tight align-middle border-r border-red-300 dark:border-red-500/20 bg-red-100 dark:bg-red-500/10 font-cairo rounded-sm" title="خانة مهمة: الفرق بين بنك نزيل واجمالى الموازنه">انحراف البنك</th>
-                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-slate-700 dark:text-slate-400 tracking-tight align-middle border-r border-slate-300 dark:border-white/[0.04] overflow-hidden min-w-0 font-cairo">
-                    <div className="flex flex-col items-center justify-center gap-1.5 h-full min-w-0">
+                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">تحديد</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">م</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">كاش</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo" title="مرسل للخزنة — يدخل في معادلة انحراف الكاش">مرسل للخزنة</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo" title="يُخصم من المصروفات في انحراف الكاش">تعويض مصروفات</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">المصروفات</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-teal-800 dark:text-teal-300 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">رصيد البرنامج كاش</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-bold text-red-700 dark:text-red-400 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 bg-red-100 dark:bg-red-500/10 font-cairo rounded-sm shadow-sm" title="خانة مهمة: الفرق بين المتوقع والفعلي للكاش">انحراف الكاش</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">مدى</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">فيزا</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">ماستر كارد</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-sky-700 dark:text-sky-300 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo" title="للعرض فقط — لا يدخل في بنك نزيل ولا انحراف البنك">تحويل بنكي</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold text-teal-800 dark:text-teal-300 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo" title="بنك نزيل = مدى + فيزا + ماستر كارد (تحويل بنكي للعرض فقط)">بنك نزيل</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-bold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 font-cairo">اجمالى الموازنه</th>
+                  <th className="px-2 py-3 text-center text-[11px] font-bold text-red-700 dark:text-red-400 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 bg-red-100 dark:bg-red-500/10 font-cairo rounded-sm shadow-sm" title="خانة مهمة: الفرق بين بنك نزيل واجمالى الموازنه">انحراف البنك</th>
+                  <th className="px-1.5 py-3 text-center text-[10px] font-semibold text-stone-900 dark:text-amber-200/90 tracking-tight align-middle border-r-2 border-stone-500 dark:border-amber-500/15 overflow-hidden min-w-0 font-cairo">
+                    <div className="flex flex-col items-center justify-center gap-1 h-full min-w-0">
                       <span className="truncate max-w-full">الحالة / إجراءات</span>
                       <button
                         type="button"
                         onClick={requestDeleteAllClosed}
                         aria-label="حذف كل التقفيلات المغلقة"
-                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg border border-slate-400 dark:border-white/10 bg-slate-100 dark:bg-slate-700/50 text-slate-700 dark:text-slate-400 hover:bg-red-100 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 hover:border-red-400 dark:hover:border-red-500/30 transition-all shrink-0"
+                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg border-2 border-stone-400 dark:border-white/10 bg-stone-200 dark:bg-slate-700/50 text-stone-800 dark:text-slate-400 hover:bg-red-100 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 hover:border-red-400 dark:hover:border-red-500/30 transition-all shrink-0 shadow-sm"
                         title="حذف كل التقفيلات المغلقة"
                       >
                         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1185,7 +1224,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                     onLockedFieldClick={handleLockedFieldClick}
                     onExpenseCompensationExceeded={handleExpenseCompensationExceeded}
                     lastExcelDetails={lastExcelDetails}
-                    onShowExcelDetails={setExcelDetailModal}
+                    onShowExcelDetails={(field, rowId) => setExcelDetailModal({ field, rowId })}
                     onShowEmployeeNames={lastExcelEmployeeNamesList.length > 0 ? () => setShowEmployeeNamesModal(true) : undefined}
                     onShowVarianceExplanation={(type, row) => setVarianceExplanationModal({ type, row })}
                     currentUserName={name}
@@ -1196,12 +1235,12 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
             </table>
           </div>
           {displayRows.length > ROWS_PER_PAGE && (
-            <div className="px-4 py-3 border-t border-slate-400 dark:border-white/[0.06] flex items-center justify-center gap-2 flex-wrap rounded-b-3xl bg-slate-200 dark:bg-slate-800/50 backdrop-blur-sm">
+            <div className="px-4 py-3 border-t border-stone-300 dark:border-white/[0.06] flex items-center justify-center gap-2 flex-wrap rounded-b-3xl bg-stone-200 dark:bg-slate-800/50 backdrop-blur-sm">
               <button
                 type="button"
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage <= 1}
-                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-teal-200 dark:border-amber-500/25 bg-teal-50 dark:bg-amber-500/10 text-teal-700 dark:text-amber-400/95 hover:bg-teal-100 hover:border-teal-300 dark:hover:bg-amber-500/20 dark:hover:border-amber-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-slate-400 disabled:bg-slate-300 disabled:text-slate-600 dark:disabled:border-white/10 dark:disabled:bg-slate-800/60 dark:disabled:text-slate-500 transition-all"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-teal-200 dark:border-amber-500/25 bg-teal-50 dark:bg-amber-500/10 text-teal-700 dark:text-amber-400/95 hover:bg-teal-100 hover:border-teal-300 dark:hover:bg-amber-500/20 dark:hover:border-amber-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-stone-300 disabled:bg-stone-300 disabled:text-stone-600 dark:disabled:border-white/10 dark:disabled:bg-slate-800/60 dark:disabled:text-slate-500 transition-all"
                 aria-label="الصفحة السابقة"
               >
                 <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1216,7 +1255,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                 type="button"
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage >= totalPages}
-                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-teal-200 dark:border-amber-500/25 bg-teal-50 dark:bg-amber-500/10 text-teal-700 dark:text-amber-400/95 hover:bg-teal-100 hover:border-teal-300 dark:hover:bg-amber-500/20 dark:hover:border-amber-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-slate-400 disabled:bg-slate-300 disabled:text-slate-600 dark:disabled:border-white/10 dark:disabled:bg-slate-800/60 dark:disabled:text-slate-500 transition-all"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-teal-200 dark:border-amber-500/25 bg-teal-50 dark:bg-amber-500/10 text-teal-700 dark:text-amber-400/95 hover:bg-teal-100 hover:border-teal-300 dark:hover:bg-amber-500/20 dark:hover:border-amber-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-stone-300 disabled:bg-stone-300 disabled:text-stone-600 dark:disabled:border-white/10 dark:disabled:bg-slate-800/60 dark:disabled:text-slate-500 transition-all"
                 aria-label="الصفحة التالية"
               >
                 التالي
@@ -1227,15 +1266,15 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
             </div>
           )}
           {displayRows.length === 0 && (
-            <div className="py-16 px-4 text-center rounded-b-3xl bg-slate-200 dark:bg-slate-800/20">
-              <p className="text-slate-700 dark:text-slate-500 font-cairo mb-1">لا توجد تقفيلات</p>
-              <p className="text-slate-800 dark:text-slate-600 text-sm font-cairo">اختر فلتراً مختلفاً أو ابدأ شفتاً جديداً</p>
+            <div className="py-16 px-4 text-center rounded-b-3xl bg-stone-100 dark:bg-slate-800/20">
+              <p className="text-stone-600 dark:text-slate-500 font-cairo mb-1">لا توجد تقفيلات</p>
+              <p className="text-stone-700 dark:text-slate-600 text-sm font-cairo">اختر فلتراً مختلفاً أو ابدأ شفتاً جديداً</p>
             </div>
           )}
         </div>
 
         {/* شريط إغلاق الشفت والتراجع — تحت الجدول، فوق الحاسبتين */}
-        <div className="flex flex-col items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-amber-500 dark:border-amber-500/30 bg-gradient-to-b from-amber-100 to-slate-200 dark:from-amber-500/10 dark:to-slate-800/60 min-h-0 shadow-md dark:shadow-[0_4px_20px_rgba(245,158,11,0.12),0_0_1px_rgba(255,255,255,0.06)]">
+        <div className="flex flex-col items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-teal-500 dark:border-amber-500/30 bg-gradient-to-b from-teal-50 to-stone-200 dark:from-amber-500/10 dark:to-slate-800/60 min-h-0 shadow-md dark:shadow-[0_4px_20px_rgba(245,158,11,0.12),0_0_1px_rgba(255,255,255,0.06)]">
           {closingRowId ? (
             <div className="flex flex-wrap items-center justify-center w-full" dir="ltr">
               {closingSecondsLeft > 0 ? (
@@ -1252,7 +1291,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                   <span className="tabular-nums font-cairo">({closingSecondsLeft} ثانية)</span>
                 </button>
               ) : (
-                <span className="text-sm font-cairo font-medium text-amber-800 dark:text-amber-400 tabular-nums">جاري الإغلاق...</span>
+                <span className="text-sm font-cairo font-medium text-teal-800 dark:text-amber-400 tabular-nums">جاري الإغلاق...</span>
               )}
             </div>
           ) : firstActiveId && firstActiveRow ? (
@@ -1263,11 +1302,11 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
               className={`btn-close-shift inline-flex items-center justify-center gap-3 px-8 py-3.5 min-w-[280px] rounded-2xl text-base font-cairo font-bold whitespace-nowrap border-2 select-none transition-all
                 ${canCloseShift
                   ? 'bg-teal-500 hover:bg-teal-600 text-white border-teal-400 shadow-md dark:bg-gradient-to-b dark:from-amber-500/50 dark:to-amber-600/40 dark:text-amber-50 dark:border-amber-400 dark:shadow-[0_4px_24px_rgba(245,158,11,0.3)] dark:hover:from-amber-500/60 dark:hover:to-amber-600/50 dark:hover:shadow-[0_6px_28px_rgba(245,158,11,0.35)] hover:scale-[1.02] active:scale-[0.98]'
-                  : 'opacity-60 bg-slate-200 text-slate-500 border-slate-300 dark:opacity-50 dark:bg-slate-800/40 dark:text-slate-500 dark:border-slate-600/50 cursor-not-allowed'
+                  : 'opacity-60 bg-stone-200 text-stone-500 border-stone-300 dark:opacity-50 dark:bg-slate-800/40 dark:text-slate-500 dark:border-slate-600/50 cursor-not-allowed'
                 }`}
               title={canCloseShift ? 'إغلاق الشفت وحفظ التقفيلة' : 'أدخل رصيد البرنامج كاش وإجمالي الموازنة (البنك) أولاً'}
             >
-              <svg className={`btn-close-shift-icon w-6 h-6 shrink-0 ${canCloseShift ? 'text-white dark:text-amber-200' : 'text-slate-500 dark:text-slate-500'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg className={`btn-close-shift-icon w-6 h-6 shrink-0 ${canCloseShift ? 'text-white dark:text-amber-200' : 'text-stone-500 dark:text-slate-500'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                 <path d="M7 11V7a5 5 0 0110 0v4" />
               </svg>
@@ -1302,46 +1341,69 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         />
       )}
 
-      {excelDetailModal && lastExcelDetails && lastExcelDetails[excelDetailModal].length > 0 && (() => {
-        const list = lastExcelDetails[excelDetailModal]
-        const total = list.reduce((s, t) => s + t.amount, 0)
+      {excelDetailModal && lastExcelDetails && (() => {
+        const { field, rowId } = excelDetailModal
+        const list = lastExcelDetails[field] ?? []
+        const fromExcel = list.reduce((s, t) => s + t.amount, 0)
+        const row = rows.find((r) => r.id === rowId)
+        const currentInCell = row ? ((row[field] as number) ?? 0) : 0
+        const diff = currentInCell - fromExcel
         const labels: Record<keyof ExcelDetails, string> = {
           mada: 'مدى',
           visa: 'فيزا',
           mastercard: 'ماستر كارد',
           bankTransfer: 'تحويل بنكي',
         }
-        const title = `تفاصيل ${labels[excelDetailModal]} — ${list.length} عملية`
+        const title = `سجل التغيير — ${labels[field]}`
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default" role="dialog" aria-modal="true" aria-labelledby="excel-detail-title" onClick={() => setExcelDetailModal(null)}>
-            <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-sm w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
-              <h2 id="excel-detail-title" className="text-base font-bold text-teal-700 dark:text-amber-400 p-4 pb-2 border-b border-slate-400 dark:border-white/10">
+            <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-sm w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+              <h2 id="excel-detail-title" className="text-base font-bold text-teal-800 dark:text-amber-400 p-4 pb-2 border-b-2 border-stone-400 dark:border-white/10">
                 {title}
               </h2>
-              <div className="overflow-y-auto flex-1 min-h-0 p-3 space-y-2">
-                {list.map((t, i) => (
-                  <div key={i} className="py-2 border-b border-slate-100 dark:border-white/5">
-                    <div className="flex justify-between items-center gap-2 text-sm text-slate-800 dark:text-slate-300">
-                      <div className="flex flex-col items-start gap-0.5 min-w-0">
-                        <span className="tabular-nums font-cairo">{formatDateTime(t.date)}</span>
-                        {t.employeeName && (
-                          <span className="text-xs text-slate-400 font-cairo">— {t.employeeName}</span>
+              <div className="p-3 space-y-2 border-b border-stone-200 dark:border-white/10">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-stone-600 dark:text-slate-400">من إكسل (مرفوع):</span>
+                  <span className="tabular-nums font-medium text-teal-600 dark:text-amber-200/95">{formatCurrency(fromExcel)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-stone-600 dark:text-slate-400">الحالي في الخانة:</span>
+                  <span className="tabular-nums font-medium text-stone-800 dark:text-slate-200">{formatCurrency(currentInCell)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-stone-600 dark:text-slate-400">الفرق (ترحيل أو تعديل يدوي):</span>
+                  <span className={`tabular-nums font-medium ${diff >= 0 ? 'text-teal-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>{formatCurrency(diff)}</span>
+                </div>
+              </div>
+              {list.length > 0 && (
+                <>
+                  <div className="overflow-y-auto flex-1 min-h-0 p-3 space-y-2">
+                    <p className="text-xs font-cairo text-stone-500 dark:text-slate-400 mb-1">{list.length} عملية من الإكسل</p>
+                    {list.map((t, i) => (
+                      <div key={i} className="py-2 border-b border-stone-200 dark:border-white/5">
+                        <div className="flex justify-between items-center gap-2 text-sm text-stone-800 dark:text-slate-300">
+                          <div className="flex flex-col items-start gap-0.5 min-w-0">
+                            <span className="tabular-nums font-cairo">{formatDateTime(t.date)}</span>
+                            {t.employeeName && (
+                              <span className="text-xs text-stone-500 font-cairo">— {t.employeeName}</span>
+                            )}
+                          </div>
+                          <span className="tabular-nums font-medium text-teal-600 dark:text-amber-200/95 shrink-0">{formatCurrency(t.amount)}</span>
+                        </div>
+                        {t.purpose && (
+                          <p className="text-xs font-cairo text-stone-600 dark:text-amber-200/80 mt-1 pr-0 border-t border-stone-300 dark:border-amber-500/20 pt-1">
+                            {t.purpose}
+                          </p>
                         )}
                       </div>
-                      <span className="tabular-nums font-medium text-teal-600 dark:text-amber-200/95 shrink-0">{formatCurrency(t.amount)}</span>
-                    </div>
-                    {t.purpose && (
-                      <p className="text-xs font-cairo text-amber-200/80 mt-1 pr-0 border-t border-amber-500/20 pt-1">
-                        {t.purpose}
-                      </p>
-                    )}
+                    ))}
                   </div>
-                ))}
-              </div>
-              <div className="p-4 pt-2 border-t border-slate-400 dark:border-amber-500/30 flex justify-between items-center bg-slate-100 dark:bg-slate-900/50">
-                <span className="font-bold text-slate-800 dark:text-slate-200">الإجمالي</span>
-                <span className="tabular-nums font-bold text-teal-600 dark:text-amber-400">{formatCurrency(total)}</span>
-              </div>
+                  <div className="p-4 pt-2 border-t border-stone-300 dark:border-amber-500/30 flex justify-between items-center bg-stone-100 dark:bg-slate-900/50">
+                    <span className="font-bold text-stone-800 dark:text-slate-200">إجمالي الإكسل</span>
+                    <span className="tabular-nums font-bold text-teal-600 dark:text-amber-400">{formatCurrency(fromExcel)}</span>
+                  </div>
+                </>
+              )}
               <div className="p-3">
                 <button
                   type="button"
@@ -1375,15 +1437,15 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         })
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default" role="dialog" aria-modal="true" aria-labelledby="employee-names-title" onClick={() => setShowEmployeeNamesModal(false)}>
-            <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
-              <h2 id="employee-names-title" className="text-base font-bold text-amber-400 p-4 pb-2 border-b border-white/10">
+            <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+              <h2 id="employee-names-title" className="text-base font-bold text-teal-700 dark:text-amber-400 p-4 pb-2 border-b border-white/10">
                 أسماء الموظفين في العمليات المستوردة
               </h2>
               <div className="overflow-y-auto flex-1 min-h-0 p-3 space-y-1.5">
                 {employeeStats.map((s, i) => (
                   <div key={i} className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-300 py-2 px-3 rounded-lg bg-slate-900/50 border border-white/5 font-cairo">
                     <span className="font-medium text-slate-200">{s.name}</span>
-                    <span className="tabular-nums text-amber-200/90 text-xs">
+                    <span className="tabular-nums text-teal-600 dark:text-amber-200/90 text-xs">
                       {s.count} عملية — الإجمالي: {formatCurrency(s.total)}
                     </span>
                   </div>
@@ -1424,56 +1486,56 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         const swapAmount = showSwapAlert ? Math.abs(cashVariance) : 0
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default" role="dialog" aria-modal="true" aria-labelledby="variance-explanation-title" onClick={() => setVarianceExplanationModal(null)}>
-            <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
-              <h2 id="variance-explanation-title" className="text-base font-bold text-teal-700 dark:text-amber-400 p-4 pb-2 border-b border-slate-400 dark:border-white/10">
+            <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+              <h2 id="variance-explanation-title" className="text-base font-bold text-teal-800 dark:text-amber-400 p-4 pb-2 border-b-2 border-stone-400 dark:border-white/10">
                 {title}
               </h2>
-              <div className="overflow-y-auto flex-1 min-h-0 p-4 space-y-3 text-sm text-slate-800 dark:text-slate-300">
+              <div className="overflow-y-auto flex-1 min-h-0 p-4 space-y-3 text-sm text-stone-800 dark:text-slate-300">
                 {isCash ? (
                   <>
-                    <p className="text-slate-200 font-medium">انحراف الكاش = (كاش + مرسل للخزنة + مصروفات فعّالة) − رصيد البرنامج كاش</p>
+                    <p className="text-stone-800 dark:text-slate-200 font-semibold text-teal-800 dark:text-teal-300">انحراف الكاش = (كاش + مرسل للخزنة + مصروفات فعّالة) − رصيد البرنامج كاش</p>
                     <ul className="space-y-1.5 list-none">
-                      <li className="flex justify-between gap-2"><span>كاش</span><span className="tabular-nums text-amber-200/90">{formatCurrency(cash)}</span></li>
-                      <li className="flex justify-between gap-2"><span>مرسل للخزنة</span><span className="tabular-nums text-amber-200/90">{formatCurrency(sentToTreasury)}</span></li>
-                      <li className="flex justify-between gap-2"><span>مصروفات</span><span className="tabular-nums text-amber-200/90">{formatCurrency(expenses)}</span></li>
-                      <li className="flex justify-between gap-2"><span>تعويض مصروفات</span><span className="tabular-nums text-amber-200/90">− {formatCurrency(expenseCompensation)}</span></li>
-                      <li className="flex justify-between gap-2 border-t border-white/10 pt-1.5"><span>مصروفات فعّالة (صافي)</span><span className="tabular-nums text-amber-200/90">{formatCurrency(effectiveExpenses)}</span></li>
-                      <li className="flex justify-between gap-2 font-medium"><span>كاش + مرسل للخزنة + مصروفات فعّالة</span><span className="tabular-nums text-amber-300">{formatCurrency(expectedProgramCash)}</span></li>
-                      <li className="flex justify-between gap-2"><span>رصيد البرنامج كاش</span><span className="tabular-nums text-amber-200/90">− {formatCurrency(programBalanceCash)}</span></li>
-                      <li className="flex justify-between gap-2 border-t border-amber-500/30 pt-2 font-bold text-amber-300"><span>انحراف الكاش</span><span className="tabular-nums">{cashVariance > 0 ? '+' : ''}{formatCurrency(cashVariance)}</span></li>
+                      <li className="flex justify-between gap-2"><span>كاش</span><span className="tabular-nums font-medium text-teal-700 dark:text-teal-400">{formatCurrency(cash)}</span></li>
+                      <li className="flex justify-between gap-2"><span>مرسل للخزنة</span><span className="tabular-nums font-medium text-teal-700 dark:text-teal-400">{formatCurrency(sentToTreasury)}</span></li>
+                      <li className="flex justify-between gap-2"><span>مصروفات</span><span className="tabular-nums font-medium text-teal-700 dark:text-teal-400">{formatCurrency(expenses)}</span></li>
+                      <li className="flex justify-between gap-2"><span>تعويض مصروفات</span><span className="tabular-nums font-medium text-teal-700 dark:text-teal-400">− {formatCurrency(expenseCompensation)}</span></li>
+                      <li className="flex justify-between gap-2 border-t border-stone-300 dark:border-white/10 pt-1.5"><span>مصروفات فعّالة (صافي)</span><span className="tabular-nums font-medium text-teal-700 dark:text-teal-400">{formatCurrency(effectiveExpenses)}</span></li>
+                      <li className="flex justify-between gap-2 font-medium"><span>كاش + مرسل للخزنة + مصروفات فعّالة</span><span className="tabular-nums font-bold text-teal-800 dark:text-teal-300">{formatCurrency(expectedProgramCash)}</span></li>
+                      <li className="flex justify-between gap-2"><span>رصيد البرنامج كاش</span><span className="tabular-nums font-medium text-teal-700 dark:text-teal-400">− {formatCurrency(programBalanceCash)}</span></li>
+                      <li className="flex justify-between gap-2 border-t-2 border-teal-400 dark:border-amber-500/30 pt-2 font-bold text-teal-800 dark:text-amber-300"><span>انحراف الكاش</span><span className="tabular-nums">{cashVariance > 0 ? '+' : ''}{formatCurrency(cashVariance)}</span></li>
                     </ul>
-                    <p className="text-xs text-slate-400 pt-1">
+                    <p className="text-xs text-stone-600 dark:text-slate-400 pt-1">
                       {cashVariance > 0 ? 'زيادة: الكاش الفعلي (أو المرسل + المصروف الفعلي) أكبر من رصيد البرنامج.' : cashVariance < 0 ? 'عجز: رصيد البرنامج كاش أكبر من المتوقّع من الكاش والمرسل والمصروف.' : 'لا يوجد انحراف.'}
                     </p>
                   </>
                 ) : (
                   <>
-                    <p className="text-slate-200 font-medium">انحراف البنك = بنك نزيل − اجمالى الموازنه</p>
+                    <p className="text-stone-800 dark:text-slate-200 font-semibold text-teal-800 dark:text-teal-300">انحراف البنك = بنك نزيل − اجمالى الموازنه</p>
                     <ul className="space-y-1.5 list-none">
-                      <li className="flex justify-between gap-2"><span>مدى</span><span className="tabular-nums text-amber-200/90">{formatCurrency(row.mada)}</span></li>
-                      <li className="flex justify-between gap-2"><span>فيزا</span><span className="tabular-nums text-amber-200/90">{formatCurrency(row.visa)}</span></li>
-                      <li className="flex justify-between gap-2"><span>ماستر كارد</span><span className="tabular-nums text-amber-200/90">{formatCurrency(row.mastercard)}</span></li>
-                      <li className="flex justify-between gap-2"><span>تحويل بنكي <span className="text-slate-500 text-[10px]">(للعرض فقط)</span></span><span className="tabular-nums text-amber-200/90">{formatCurrency(row.bankTransfer)}</span></li>
-                      <li className="flex justify-between gap-2 border-t border-white/10 pt-1.5 font-medium"><span>بنك نزيل (مدى+فيزا+ماستر)</span><span className="tabular-nums text-amber-300">{formatCurrency(bankTotal)}</span></li>
-                      <li className="flex justify-between gap-2"><span>اجمالى الموازنه</span><span className="tabular-nums text-amber-200/90">− {formatCurrency(programBalanceBank)}</span></li>
-                      <li className="flex justify-between gap-2 border-t border-amber-500/30 pt-2 font-bold text-amber-300"><span>انحراف البنك</span><span className="tabular-nums">{bankVariance > 0 ? '+' : ''}{formatCurrency(bankVariance)}</span></li>
+                      <li className="flex justify-between gap-2"><span>مدى</span><span className="tabular-nums font-medium text-teal-700 dark:text-teal-400">{formatCurrency(row.mada)}</span></li>
+                      <li className="flex justify-between gap-2"><span>فيزا</span><span className="tabular-nums font-medium text-teal-700 dark:text-teal-400">{formatCurrency(row.visa)}</span></li>
+                      <li className="flex justify-between gap-2"><span>ماستر كارد</span><span className="tabular-nums font-medium text-teal-700 dark:text-teal-400">{formatCurrency(row.mastercard)}</span></li>
+                      <li className="flex justify-between gap-2"><span>تحويل بنكي <span className="text-stone-500 dark:text-slate-500 text-[10px]">(للعرض فقط)</span></span><span className="tabular-nums font-medium text-teal-700 dark:text-teal-400">{formatCurrency(row.bankTransfer)}</span></li>
+                      <li className="flex justify-between gap-2 border-t border-stone-300 dark:border-white/10 pt-1.5 font-medium"><span>بنك نزيل (مدى+فيزا+ماستر)</span><span className="tabular-nums font-bold text-teal-800 dark:text-teal-300">{formatCurrency(bankTotal)}</span></li>
+                      <li className="flex justify-between gap-2"><span>اجمالى الموازنه</span><span className="tabular-nums font-medium text-teal-700 dark:text-teal-400">− {formatCurrency(programBalanceBank)}</span></li>
+                      <li className="flex justify-between gap-2 border-t-2 border-teal-400 dark:border-amber-500/30 pt-2 font-bold text-teal-800 dark:text-amber-300"><span>انحراف البنك</span><span className="tabular-nums">{bankVariance > 0 ? '+' : ''}{formatCurrency(bankVariance)}</span></li>
                     </ul>
-                    <p className="text-xs text-slate-400 pt-1">
+                    <p className="text-xs text-stone-600 dark:text-slate-400 pt-1">
                       {bankVariance > 0 ? 'زيادة: بنك نزيل أكبر من اجمالى الموازنه المدخل.' : bankVariance < 0 ? 'عجز: اجمالى الموازنه أكبر من بنك نزيل.' : 'لا يوجد انحراف.'}
                     </p>
                   </>
                 )}
                 {showSwapAlert && (
-                  <div className="mt-3 p-3 rounded-xl border border-amber-400/50 dark:border-amber-500/30 bg-amber-50/80 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 text-sm">
+                  <div className="mt-3 p-3 rounded-xl border-2 border-teal-400/60 dark:border-amber-500/30 bg-teal-50 dark:bg-amber-900/20 text-teal-800 dark:text-amber-200 text-sm font-medium">
                     تنبيه: قد تكون سندات بقيمة <strong>{swapAmount.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}</strong> ريال دخلت في خانة خاطئة (نقداً ↔ شبكة). راجع تحويل المبلغ بين الكاش وبنك نزيل.
                   </div>
                 )}
               </div>
-              <div className="p-3 border-t border-white/10">
+              <div className="p-3 border-t-2 border-stone-400 dark:border-white/10">
                 <button
                   type="button"
                   onClick={() => setVarianceExplanationModal(null)}
-                  className="w-full py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+                  className="w-full py-2.5 rounded-xl text-sm font-bold bg-teal-600 hover:bg-teal-500 text-white transition"
                 >
                   إغلاق
                 </button>
@@ -1489,32 +1551,32 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         const bankTip = bankVar !== 0 ? (bankVar > 0 ? 'زيادة في البنك — راجع إدخالات مدى/فيزا/ماستر أو اجمالى الموازنه' : 'عجز في البنك — راجع بنك نزيل أو اجمالى الموازنه') : ''
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="close-variance-title">
-            <div className="rounded-2xl border border-amber-200 dark:border-amber-500/30 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
-              <h2 id="close-variance-title" className="text-lg font-bold text-teal-700 dark:text-amber-400 mb-3">
+            <div className="rounded-2xl border-2 border-teal-300 dark:border-amber-500/30 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+              <h2 id="close-variance-title" className="text-lg font-bold text-teal-800 dark:text-amber-400 mb-3">
                 تنبيه: يوجد انحراف
               </h2>
-              <div className="text-slate-800 dark:text-slate-300 text-sm leading-relaxed mb-4 space-y-2">
+              <div className="text-stone-800 dark:text-slate-300 text-sm leading-relaxed mb-4 space-y-2">
                 {cashVar !== 0 && (
                   <p className="block">
                     <span className="font-medium">انحراف الكاش: </span>
-                    <span className="font-bold tabular-nums text-amber-300">{cashVar > 0 ? '+' : ''}{formatCurrency(cashVar)}</span>
-                    {cashTip && <span className="block text-amber-200/90 text-xs mt-0.5">{cashTip}</span>}
+                    <span className="font-bold tabular-nums text-teal-700 dark:text-teal-400">{cashVar > 0 ? '+' : ''}{formatCurrency(cashVar)}</span>
+                    {cashTip && <span className="block text-stone-600 dark:text-amber-200/90 text-xs mt-0.5">{cashTip}</span>}
                   </p>
                 )}
                 {bankVar !== 0 && (
                   <p className="block">
                     <span className="font-medium">انحراف البنك: </span>
-                    <span className="font-bold tabular-nums text-amber-300">{bankVar > 0 ? '+' : ''}{formatCurrency(bankVar)}</span>
-                    {bankTip && <span className="block text-amber-200/90 text-xs mt-0.5">{bankTip}</span>}
+                    <span className="font-bold tabular-nums text-teal-700 dark:text-teal-400">{bankVar > 0 ? '+' : ''}{formatCurrency(bankVar)}</span>
+                    {bankTip && <span className="block text-stone-600 dark:text-amber-200/90 text-xs mt-0.5">{bankTip}</span>}
                   </p>
                 )}
-                <p className="pt-2 text-slate-200">هل تريد الإغلاق مع هذا الانحراف؟</p>
+                <p className="pt-2 text-stone-700 dark:text-slate-200">هل تريد الإغلاق مع هذا الانحراف؟</p>
               </div>
               <div className="flex gap-3">
                 <button
                   type="button"
                   onClick={confirmCloseWithVariance}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-amber-500 hover:bg-amber-400 text-slate-900 transition"
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-teal-600 hover:bg-teal-500 text-white transition"
                 >
                   نعم، إغلاق الشفت
                 </button>
@@ -1533,11 +1595,11 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
 
       {transferConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="transfer-confirm-title">
-          <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
-            <h2 id="transfer-confirm-title" className="text-lg font-bold text-amber-400 mb-3">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <h2 id="transfer-confirm-title" className="text-lg font-bold text-teal-700 dark:text-amber-400 mb-3">
               ترحيل إلى {transferFieldLabel(transferConfirm.field)}
             </h2>
-            <p className="text-slate-300 text-sm leading-relaxed mb-4">
+            <p className="text-stone-600 dark:text-slate-300 text-sm leading-relaxed mb-4">
               هل تريد ترحيل الرقم الجديد وهو <span className="font-bold text-white tabular-nums">{formatCurrency(transferConfirm.amount)}</span>؟ يوجد رقم في الخانة وهو <span className="font-bold text-white tabular-nums">{formatCurrency(transferConfirm.currentValue)}</span>.
             </p>
             <div className="flex gap-3">
@@ -1560,13 +1622,62 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         </div>
       )}
 
+      {bankTransferConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="bank-transfer-confirm-title">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <h2 id="bank-transfer-confirm-title" className="text-lg font-bold text-teal-700 dark:text-amber-400 mb-3">
+              ترحيل العمليات البنكية
+            </h2>
+            <p className="text-stone-600 dark:text-slate-300 text-sm leading-relaxed mb-3">
+              هل تريد ترحيل الأرقام الجديدة؟ توجد قيم في الخانات:
+            </p>
+            <ul className="text-sm text-stone-700 dark:text-slate-300 space-y-1.5 mb-4">
+              {bankTransferConfirm.mada > 0 && (
+                <li className="flex justify-between gap-2">
+                  <span>مدى:</span>
+                  <span className="tabular-nums">مرحّل <strong className="text-teal-600 dark:text-amber-400">{formatCurrency(bankTransferConfirm.mada)}</strong> — في الخانة <strong>{formatCurrency(bankTransferConfirm.currentMada)}</strong></span>
+                </li>
+              )}
+              {bankTransferConfirm.visa > 0 && (
+                <li className="flex justify-between gap-2">
+                  <span>فيزا:</span>
+                  <span className="tabular-nums">مرحّل <strong className="text-teal-600 dark:text-amber-400">{formatCurrency(bankTransferConfirm.visa)}</strong> — في الخانة <strong>{formatCurrency(bankTransferConfirm.currentVisa)}</strong></span>
+                </li>
+              )}
+              {bankTransferConfirm.mastercard > 0 && (
+                <li className="flex justify-between gap-2">
+                  <span>ماستر:</span>
+                  <span className="tabular-nums">مرحّل <strong className="text-teal-600 dark:text-amber-400">{formatCurrency(bankTransferConfirm.mastercard)}</strong> — في الخانة <strong>{formatCurrency(bankTransferConfirm.currentMaster)}</strong></span>
+                </li>
+              )}
+            </ul>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleBankTransferConfirmYes}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition"
+              >
+                نعم
+              </button>
+              <button
+                type="button"
+                onClick={handleBankTransferConfirmNo}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+              >
+                لا
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {clearRowConfirmId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="clear-row-confirm-title">
-          <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
-            <h2 id="clear-row-confirm-title" className="text-lg font-bold text-amber-400 mb-3">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <h2 id="clear-row-confirm-title" className="text-lg font-bold text-teal-700 dark:text-amber-400 mb-3">
               إفراغ الصف
             </h2>
-            <p className="text-slate-300 dark:text-slate-300 text-sm leading-relaxed mb-4">
+            <p className="text-stone-600 dark:text-slate-300 text-sm leading-relaxed mb-4">
               هل تريد إفراغ كل المدخلات في هذا الصف؟ (كاش، مدى، فيزا، ماستر، اجمالى الموازنه، مصروفات، وغيرها)
             </p>
             <div className="flex gap-3">
@@ -1598,7 +1709,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
           onClick={() => setExpenseModal(null)}
         >
           <div
-            className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-lg w-full max-h-[85vh] flex flex-col font-cairo cursor-auto"
+            className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-lg w-full max-h-[85vh] flex flex-col font-cairo cursor-auto"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !expenseModal.readOnly) {
@@ -1608,13 +1719,13 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
             }}
           >
             <div className="flex items-center justify-between p-4 border-b border-white/10">
-              <h2 id="expense-modal-title" className="text-lg font-bold text-amber-400">
+              <h2 id="expense-modal-title" className="text-lg font-bold text-teal-700 dark:text-amber-400">
                 {expenseModal.readOnly ? 'تفاصيل المصروفات' : 'تصنيف المبلغ المصروف'}
               </h2>
               <button
                 type="button"
                 onClick={() => setExpenseModal(null)}
-                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition"
+                className="p-2 rounded-lg text-stone-500 hover:text-white hover:bg-white/10 transition"
                 aria-label="إغلاق"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1624,17 +1735,17 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
             </div>
             {!expenseModal.readOnly && (
               <>
-                <p className="text-slate-400 text-sm px-4 pt-2">أدخل تفاصيل المصروف (مثال: 10 ريال كتب، 10 ريال مسطرة)</p>
+                <p className="text-stone-500 text-sm px-4 pt-2">أدخل تفاصيل المصروف (مثال: 10 ريال كتب، 10 ريال مسطرة)</p>
                 {(expenseModal.carriedCount ?? 0) > 0 && (
-                  <p className="text-amber-200/80 text-xs px-4 pt-0.5 font-cairo">البنود المرحّلة للعرض فقط — يمكنك إضافة تصنيف ومبلغ جديد فقط، ويُحدَّث المجموع وخانة المصروفات تلقائياً.</p>
+                  <p className="text-stone-600 dark:text-amber-200/80 text-xs px-4 pt-0.5 font-cairo">البنود المرحّلة للعرض فقط — يمكنك إضافة تصنيف ومبلغ جديد فقط، ويُحدَّث المجموع وخانة المصروفات تلقائياً.</p>
                 )}
               </>
             )}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {!expenseModal.readOnly && expenseModal.items.length > 0 && (
                 <div className="flex gap-2 items-center pb-0.5">
-                  <span className="flex-1 text-xs font-medium text-slate-700 font-cairo">بند المصروف</span>
-                  <span className="w-24 text-xs font-medium text-slate-700 font-cairo text-center">مبلغ المصروف</span>
+                  <span className="flex-1 text-xs font-medium text-stone-700 font-cairo">بند المصروف</span>
+                  <span className="w-24 text-xs font-medium text-stone-700 font-cairo text-center">مبلغ المصروف</span>
                   <span className="w-10 shrink-0" aria-hidden="true" />
                 </div>
               )}
@@ -1651,7 +1762,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                         <span className="flex-1 px-3 py-2 rounded-lg bg-slate-900/60 border border-white/10 text-slate-200 text-sm font-cairo">
                           {item.description || '—'}
                           {isLocked && (
-                            <span className="mr-1 text-[10px] text-slate-600 font-cairo" title="من الشفت السابق"> (مرحّل)</span>
+                            <span className="mr-1 text-[10px] text-stone-600 font-cairo" title="من الشفت السابق"> (مرحّل)</span>
                           )}
                         </span>
                         {!expenseModal.readOnly && isLocked ? (
@@ -1700,7 +1811,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                               placeholder={hasAmount ? 'الوصف إلزامي' : 'الوصف'}
                               title={hasAmount ? 'الوصف إلزامي عند وجود مبلغ' : undefined}
                               aria-required={hasAmount}
-                              className={`flex-1 px-3 py-2 rounded-lg bg-white dark:bg-slate-900/80 border text-slate-900 dark:text-white text-sm font-cairo placeholder:text-slate-500 dark:placeholder:text-slate-500 focus:border-teal-500/50 dark:focus:border-amber-500/50 focus:ring-1 focus:ring-teal-500/25 dark:focus:ring-amber-500/25 ${needsDesc ? 'border-amber-500 dark:border-amber-500/50 ring-1 ring-amber-500/25' : 'border-slate-400 dark:border-amber-500/25'} ${isPulsing ? 'expense-description-pulse' : ''}`}
+                              className={`flex-1 px-3 py-2 rounded-lg bg-stone-50 dark:bg-slate-900/80 border text-stone-900 dark:text-white text-sm font-cairo placeholder:text-stone-500 dark:placeholder:text-slate-500 focus:border-teal-500/50 dark:focus:border-amber-500/50 focus:ring-1 focus:ring-teal-500/25 dark:focus:ring-amber-500/25 ${needsDesc ? 'border-teal-500 dark:border-amber-500/50 ring-1 ring-teal-500/25' : 'border-stone-300 dark:border-amber-500/25'} ${isPulsing ? 'expense-description-pulse' : ''}`}
                             />
                           )
                         })()}
@@ -1724,14 +1835,14 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                             }
                           }}
                           placeholder="مبلغ"
-                          className="cashbox-input w-24 px-3 py-2 rounded-lg bg-white dark:bg-slate-900/80 border border-slate-400 dark:border-amber-500/25 text-slate-900 dark:text-white text-sm text-center focus:border-teal-500/50 dark:focus:border-amber-500/50 focus:ring-1 focus:ring-teal-500/25 dark:focus:ring-amber-500/25"
+                          className="cashbox-input w-24 px-3 py-2 rounded-lg bg-stone-50 dark:bg-slate-900/80 border border-stone-300 dark:border-amber-500/25 text-stone-900 dark:text-white text-sm text-center focus:border-teal-500/50 dark:focus:border-amber-500/50 focus:ring-1 focus:ring-teal-500/25 dark:focus:ring-amber-500/25"
                         />
                         <button
                           type="button"
                           tabIndex={-1}
                           onClick={() => removeExpenseModalRow(index)}
                           disabled={expenseModal.items.length <= 1}
-                          className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/20 disabled:opacity-40 disabled:pointer-events-none transition"
+                          className="p-2 rounded-lg text-stone-500 hover:text-red-400 hover:bg-red-500/20 disabled:opacity-40 disabled:pointer-events-none transition"
                           aria-label="حذف السطر"
                           title="حذف"
                         >
@@ -1751,7 +1862,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                   type="button"
                   tabIndex={-1}
                   onClick={addExpenseModalRow}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-amber-500/20 text-amber-400 border border-amber-500/40 hover:bg-amber-500/30 transition"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-teal-100 text-teal-700 border-2 border-teal-400 hover:bg-teal-200 transition"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 5v14M5 12h14" />
@@ -1762,8 +1873,8 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
               <div className="flex-1" />
               {!expenseModal.readOnly ? (
                 <div className="flex flex-col items-end gap-2">
-                  <span className="text-slate-400 text-sm font-cairo">
-                    المجموع: <span className="font-bold text-amber-400 tabular-nums">{formatCurrency(expenseModal.items.reduce((s, it) => s + (Number(it.amount) || 0), 0))}</span>
+                  <span className="text-stone-500 text-sm font-cairo">
+                    المجموع: <span className="font-bold text-teal-700 dark:text-amber-400 tabular-nums">{formatCurrency(expenseModal.items.reduce((s, it) => s + (Number(it.amount) || 0), 0))}</span>
                   </span>
                   <button
                     type="button"
@@ -1780,8 +1891,8 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                   </button>
                 </div>
               ) : (
-                <span className="text-slate-400 text-sm font-cairo">
-                  المجموع: <span className="font-bold text-amber-400 tabular-nums">{formatCurrency(expenseModal.items.reduce((s, it) => s + (Number(it.amount) || 0), 0))}</span>
+                <span className="text-stone-500 text-sm font-cairo">
+                  المجموع: <span className="font-bold text-teal-700 dark:text-amber-400 tabular-nums">{formatCurrency(expenseModal.items.reduce((s, it) => s + (Number(it.amount) || 0), 0))}</span>
                 </span>
               )}
             </div>
@@ -1791,13 +1902,13 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
 
       {deleteCarriedConfirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-carried-dialog-title">
-          <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
-            <h2 id="delete-carried-dialog-title" className="text-lg font-bold text-amber-400 mb-3">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <h2 id="delete-carried-dialog-title" className="text-lg font-bold text-teal-700 dark:text-amber-400 mb-3">
               {deleteCarriedConfirm.step === 'confirm' ? 'حذف بند مرحّل' : 'كود الأدمن'}
             </h2>
             {deleteCarriedConfirm.step === 'confirm' ? (
               <>
-                <p className="text-slate-300 text-sm leading-relaxed mb-4">هل تريد حذف هذا البند المرحّل؟ يتطلب إدخال كود الأدمن في الخطوة التالية.</p>
+                <p className="text-stone-600 dark:text-slate-300 text-sm leading-relaxed mb-4">هل تريد حذف هذا البند المرحّل؟ يتطلب إدخال كود الأدمن في الخطوة التالية.</p>
                 <div className="flex gap-3">
                   <button
                     type="button"
@@ -1817,7 +1928,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
               </>
             ) : (
               <>
-                <p className="text-slate-300 text-sm leading-relaxed mb-3">ادخل كود الأدمن</p>
+                <p className="text-stone-600 dark:text-slate-300 text-sm leading-relaxed mb-3">ادخل كود الأدمن</p>
                 <div className="relative mb-4">
                   <input
                     type={showAdminCode ? 'text' : 'password'}
@@ -1834,7 +1945,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                   <button
                     type="button"
                     onClick={() => setShowAdminCode((v) => !v)}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-amber-400 transition"
+                    className="absolute left-2 top-1/2 -translate-y-1/2 p-1 rounded text-stone-500 hover:text-teal-600 transition"
                     aria-label={showAdminCode ? 'إخفاء الكود' : 'إظهار الكود'}
                   >
                     {showAdminCode ? (
@@ -1856,13 +1967,13 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
 
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
-          <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
-            <h2 id="delete-dialog-title" className="text-lg font-bold text-amber-400 mb-3">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <h2 id="delete-dialog-title" className="text-lg font-bold text-teal-700 dark:text-amber-400 mb-3">
               {deleteConfirm.step === 'confirm' ? 'حذف الصف' : 'كود الأدمن'}
             </h2>
             {deleteConfirm.step === 'confirm' ? (
               <>
-                <p className="text-slate-300 text-sm leading-relaxed mb-4">هل تريد حذف الصف؟</p>
+                <p className="text-stone-600 dark:text-slate-300 text-sm leading-relaxed mb-4">هل تريد حذف الصف؟</p>
                 <div className="flex gap-3">
                   <button
                     type="button"
@@ -1882,7 +1993,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
               </>
             ) : (
               <>
-                <p className="text-slate-300 text-sm leading-relaxed mb-3">ادخل كود الأدمن</p>
+                <p className="text-stone-600 dark:text-slate-300 text-sm leading-relaxed mb-3">ادخل كود الأدمن</p>
                 <div className="relative mb-4">
                   <input
                     type={showAdminCode ? 'text' : 'password'}
@@ -1899,7 +2010,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                   <button
                     type="button"
                     onClick={() => setShowAdminCode((v) => !v)}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-amber-400 transition"
+                    className="absolute left-2 top-1/2 -translate-y-1/2 p-1 rounded text-stone-500 hover:text-teal-600 transition"
                     aria-label={showAdminCode ? 'إخفاء الكود' : 'إظهار الكود'}
                     title={showAdminCode ? 'إخفاء' : 'إظهار'}
                   >
@@ -1940,13 +2051,13 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
 
       {deleteAllClosedConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-all-dialog-title">
-          <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
-            <h2 id="delete-all-dialog-title" className="text-lg font-bold text-amber-400 mb-3">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <h2 id="delete-all-dialog-title" className="text-lg font-bold text-teal-700 dark:text-amber-400 mb-3">
               {deleteAllClosedConfirm.step === 'confirm' ? 'حذف كل التقفيلات المغلقة' : 'كود الأدمن'}
             </h2>
             {deleteAllClosedConfirm.step === 'confirm' ? (
               <>
-                <p className="text-slate-300 text-sm leading-relaxed mb-4">هل تريد حذف كل التقفيلات المغلقة؟</p>
+                <p className="text-stone-600 dark:text-slate-300 text-sm leading-relaxed mb-4">هل تريد حذف كل التقفيلات المغلقة؟</p>
                 <div className="flex gap-3">
                   <button
                     type="button"
@@ -1966,7 +2077,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
               </>
             ) : (
               <>
-                <p className="text-slate-300 text-sm leading-relaxed mb-3">ادخل كود الأدمن</p>
+                <p className="text-stone-600 dark:text-slate-300 text-sm leading-relaxed mb-3">ادخل كود الأدمن</p>
                 <div className="relative mb-4">
                   <input
                     type={showAdminCode ? 'text' : 'password'}
@@ -1983,7 +2094,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                   <button
                     type="button"
                     onClick={() => setShowAdminCode((v) => !v)}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-amber-400 transition"
+                    className="absolute left-2 top-1/2 -translate-y-1/2 p-1 rounded text-stone-500 hover:text-teal-600 transition"
                     aria-label={showAdminCode ? 'إخفاء الكود' : 'إظهار الكود'}
                     title={showAdminCode ? 'إخفاء' : 'إظهار'}
                   >

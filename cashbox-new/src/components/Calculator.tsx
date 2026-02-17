@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 type Op = '+' | '-' | '*' | '/' | '%'
 
@@ -26,6 +27,26 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
   const [expression, setExpression] = useState('')
   const [history, setHistory] = useState<string[]>([])
   const [showHistory, setShowHistory] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [popoverPosition, setPopoverPosition] = useState<{ right: number; bottom: number } | null>(null)
+
+  useLayoutEffect(() => {
+    if (!showHistory) {
+      setPopoverPosition(null)
+      return
+    }
+    const el = triggerRef.current
+    if (!el) {
+      setPopoverPosition(null)
+      return
+    }
+    const rect = el.getBoundingClientRect()
+    setPopoverPosition({
+      right: window.innerWidth - rect.right,
+      bottom: window.innerHeight - rect.top + 8,
+    })
+  }, [showHistory])
+
   const currentRef = useRef('0')
   const prevRef = useRef('')
   const opRef = useRef<Op | null>(null)
@@ -168,11 +189,11 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
 
   const isOp = (k: string) => ['+', '-', '*', '/', '%'].includes(k)
   const btnClass = (k: string) => {
-    if (k === '=') return 'col-span-2 bg-teal-500 hover:bg-teal-600 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-white dark:text-amber-400 font-bold text-lg border border-teal-400 dark:border-amber-500/40'
-    if (isOp(k)) return 'bg-teal-100 hover:bg-teal-200 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-teal-700 dark:text-amber-400 font-bold border border-teal-200 dark:border-amber-500/40 flex items-center justify-center'
-    if (k === 'C') return 'bg-red-100 hover:bg-red-200 dark:bg-red-500/20 dark:hover:bg-red-500/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/40 text-base'
-    if (k === '⌫') return 'bg-slate-300 hover:bg-slate-400 dark:bg-slate-600/40 dark:hover:bg-slate-500/50 text-slate-800 dark:text-slate-300 border border-slate-400 dark:border-white/10 text-base'
-    return 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-700/40 dark:hover:bg-slate-600/50 text-slate-900 dark:text-slate-200 border border-slate-400 dark:border-white/10 active:scale-[0.98] text-base'
+    if (k === '=') return 'col-span-2 bg-teal-500 hover:bg-teal-600 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-white dark:text-amber-400 font-bold text-lg border-2 border-teal-400 dark:border-amber-500/40 shadow-sm'
+    if (isOp(k)) return 'bg-teal-100 hover:bg-teal-200 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-teal-700 dark:text-amber-400 font-bold border-2 border-teal-300 dark:border-amber-500/40 flex items-center justify-center shadow-sm'
+    if (k === 'C') return 'bg-red-100 hover:bg-red-200 dark:bg-red-500/20 dark:hover:bg-red-500/30 text-red-600 dark:text-red-400 border-2 border-red-300 dark:border-red-500/40 text-base shadow-sm'
+    if (k === '⌫') return 'bg-stone-400 hover:bg-stone-500 dark:bg-slate-600/40 dark:hover:bg-slate-500/50 text-white dark:text-slate-300 border-2 border-stone-500 dark:border-white/10 text-base shadow-sm'
+    return 'bg-white dark:bg-slate-700/40 hover:bg-stone-100 dark:hover:bg-slate-600/50 text-stone-900 dark:text-slate-200 border-2 border-stone-400 dark:border-white/10 active:scale-[0.98] text-base shadow-sm'
   }
 
   const opIcons: Record<string, JSX.Element> = {
@@ -213,11 +234,11 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
   return (
     <div
       ref={containerRef}
-      className="w-full h-full min-h-0 flex flex-col rounded-2xl overflow-hidden border border-slate-400 dark:border-amber-500/20 bg-white dark:bg-slate-800/50 shadow-[0_4px_24px_rgba(0,0,0,0.12),0_0_1px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm"
+      className="w-full h-full min-h-0 flex flex-col rounded-2xl overflow-hidden border-2 border-stone-400 dark:border-amber-500/20 bg-stone-50 dark:bg-slate-800/50 shadow-[0_4px_24px_rgba(0,0,0,0.08),0_0_0_1px_rgba(41,37,36,0.12)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm"
       tabIndex={0}
       title="انقر هنا ثم استخدم لوحة المفاتيح. النتيجة لا تتغير عند الكتابة في الجدول."
     >
-      <div className="bg-gradient-to-b from-teal-100 to-slate-200 dark:from-amber-500/15 dark:to-slate-800/60 px-4 py-3 border-b-2 border-teal-300 dark:border-amber-500/25 flex items-center justify-between gap-2 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
+      <div className="bg-gradient-to-b from-teal-100 to-stone-200 dark:from-amber-500/15 dark:to-slate-800/60 px-4 py-3 border-b-2 border-teal-400 dark:border-amber-500/25 flex items-center justify-between gap-2 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
         <h3 className="flex items-center gap-2.5 text-base font-semibold text-teal-700 dark:text-amber-400 font-cairo tracking-wide">
           <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-teal-100 dark:bg-amber-500/20 text-teal-600 dark:text-amber-400">
             <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -234,9 +255,10 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
           الآلة الحاسبة
         </h3>
         <button
+          ref={triggerRef}
           type="button"
           onClick={() => setShowHistory((v) => !v)}
-          className={`p-1.5 rounded-lg transition ${showHistory ? 'bg-teal-100 text-teal-700 dark:bg-amber-500/20 dark:text-amber-400' : 'text-slate-700 dark:text-slate-400 hover:text-teal-600 hover:bg-slate-200 dark:hover:text-amber-400 dark:hover:bg-white/5'}`}
+          className={`p-1.5 rounded-lg transition ${showHistory ? 'bg-teal-100 text-teal-700 dark:bg-amber-500/20 dark:text-amber-400' : 'text-stone-700 dark:text-slate-400 hover:text-teal-600 hover:bg-stone-300 dark:hover:text-amber-400 dark:hover:bg-white/5'}`}
           title={showHistory ? 'إخفاء السجل' : 'سجل العمليات'}
           aria-label="سجل العمليات"
         >
@@ -247,12 +269,12 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
         </button>
       </div>
       <div className="flex-1 flex flex-col p-4 space-y-3 min-h-0">
-        <div className="rounded-xl bg-slate-100 dark:bg-slate-900/80 border border-slate-400 dark:border-amber-500/30 p-2 shadow-inner dark:shadow-[0_0_18px_rgba(245,158,11,0.14)]">
-          <div className="text-right text-slate-700 text-xs min-h-[16px] font-cairo tabular-nums select-none" aria-hidden="true">
+        <div className="rounded-xl bg-white dark:bg-slate-900/80 border-2 border-stone-400 dark:border-amber-500/30 p-2 shadow-inner dark:shadow-[0_0_18px_rgba(245,158,11,0.14)]">
+          <div className="text-right text-stone-700 text-xs min-h-[16px] font-cairo tabular-nums select-none" aria-hidden="true">
             {expression || '\u200b'}
           </div>
           <div
-            className="w-full px-3 py-2.5 rounded-lg bg-white dark:bg-slate-900/50 border-0 text-slate-900 dark:text-white text-right font-cairo text-2xl font-semibold tabular-nums min-h-[2.5rem] flex items-center justify-end"
+            className="w-full px-3 py-2.5 rounded-lg bg-stone-50 dark:bg-slate-900/50 border-2 border-stone-300 dark:border-transparent text-stone-900 dark:text-white text-right font-cairo text-2xl font-semibold tabular-nums min-h-[2.5rem] flex items-center justify-end"
             aria-live="polite"
             aria-label={`النتيجة: ${display}`}
           >
@@ -271,7 +293,7 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
             }}
             disabled={!hasActiveRow || !(parseFloat(display) || 0)}
             title={`ترحيل الرقم إلى ${CALCULATOR_TRANSFER_LABEL}`}
-            className="w-full py-2 rounded-xl text-sm font-cairo font-medium bg-teal-500 hover:bg-teal-600 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-white dark:text-emerald-400 border border-teal-400 dark:border-emerald-500/40 disabled:opacity-50 disabled:pointer-events-none transition flex items-center justify-center gap-2"
+            className="w-full py-2 rounded-xl text-sm font-cairo font-medium bg-teal-500 hover:bg-teal-600 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-white dark:text-emerald-400 border-2 border-teal-400 dark:border-emerald-500/40 disabled:opacity-50 disabled:pointer-events-none transition flex items-center justify-center gap-2 shadow-sm"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
             ترحيل إلى {CALCULATOR_TRANSFER_LABEL}
@@ -290,25 +312,27 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
             </button>
           ))}
         </div>
-        {showHistory && (
-          <div className="mt-3 pt-3 rounded-xl bg-slate-200 dark:bg-slate-900/40 border border-slate-400 dark:border-white/10 shadow-inner px-3 py-2.5">
-            <div className="flex items-center gap-2 text-xs font-medium text-teal-600 dark:text-amber-400/80 font-cairo mb-2">
-              <svg className="w-3.5 h-3.5 shrink-0 opacity-80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M12 8v4l2 2" />
-                <circle cx="12" cy="12" r="10" />
-              </svg>
-              سجل العمليات
-            </div>
-            <div className="max-h-24 overflow-y-auto text-xs text-slate-300 font-cairo space-y-1.5 scrollbar-thin rounded-lg">
+        {showHistory && popoverPosition && createPortal(
+          <>
+            <div className="fixed inset-0 z-[100]" aria-hidden onClick={() => setShowHistory(false)} />
+            <div
+              className="fixed z-[101] rounded-xl border-2 border-stone-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-xl py-2 px-3 text-xs font-cairo min-w-[180px] max-h-[280px] overflow-y-auto"
+              style={{ right: popoverPosition.right, bottom: popoverPosition.bottom }}
+            >
+              <div className="font-semibold text-teal-700 dark:text-amber-400 mb-1.5">سجل العمليات</div>
               {history.length === 0 ? (
-                <div className="text-slate-700 py-3 text-center rounded-lg bg-slate-300 dark:bg-slate-800/30">لا يوجد سجل بعد</div>
+                <p className="text-stone-600 dark:text-slate-400">لا يوجد سجل بعد</p>
               ) : (
-                history.map((h, i) => (
-                  <div key={i} className="tabular-nums px-2 py-1 rounded-md bg-slate-200 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-800/60 transition">{h}</div>
-                ))
+                <ul className="space-y-1 mb-1 max-h-48 overflow-y-auto scrollbar-thin">
+                  {history.map((h, i) => (
+                    <li key={i} className="tabular-nums px-2 py-1 rounded-md bg-stone-100 dark:bg-slate-800/40 text-stone-800 dark:text-slate-300 border border-stone-300 dark:border-transparent">{h}</li>
+                  ))}
+                </ul>
               )}
+              <button type="button" onClick={() => setShowHistory(false)} className="mt-2 w-full py-1 rounded bg-stone-300 dark:bg-slate-600 text-stone-800 dark:text-slate-200 text-[10px] font-medium">إغلاق</button>
             </div>
-          </div>
+          </>,
+          document.body
         )}
       </div>
     </div>

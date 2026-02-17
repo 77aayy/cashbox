@@ -85,11 +85,11 @@ export function Toast({ message, type, onClose, position = 'bottom', autoHideMs 
       <span className={s.icon} aria-hidden="true">
         {icons[type]}
       </span>
-      <span className="font-cairo text-sm text-slate-800 dark:text-slate-200 flex-1">{message}</span>
+      <span className="font-cairo text-sm text-stone-800 dark:text-slate-200 flex-1">{message}</span>
       <button
         type="button"
         onClick={onClose}
-        className="p-1 rounded-lg text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-300 dark:hover:bg-white/10 transition focus-visible:ring-2 focus-visible:ring-teal-400 dark:focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-800 focus-visible:outline-none"
+        className="p-1 rounded-lg text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-slate-200 hover:bg-stone-300 dark:hover:bg-white/10 transition focus-visible:ring-2 focus-visible:ring-teal-400 dark:focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-stone-50 dark:focus-visible:ring-offset-slate-800 focus-visible:outline-none"
         aria-label="إغلاق"
       >
         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

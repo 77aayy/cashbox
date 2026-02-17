@@ -43,7 +43,7 @@ export default function App() {
 
   if (!ready) {
     return (
-      <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex items-center justify-center">
+      <div className="min-h-screen page-bg-warm dark:bg-slate-900 flex items-center justify-center">
         <div className="text-slate-700 dark:text-slate-500 font-cairo">جاري التحميل...</div>
       </div>
     )
