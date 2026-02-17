@@ -63,3 +63,8 @@ cashbox/
 
 # Playwright / E2E
 test-results/
+
+# Old / one-off (لا يُرفع)
+inspect-excel.js
+FINAL_REVIEW.md
+git

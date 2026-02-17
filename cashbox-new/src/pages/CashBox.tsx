@@ -6,6 +6,7 @@ import { computeBankVariance, computeCashVariance, computeVariance, formatCurren
 import { ClosureRowComp } from '../components/ClosureRow'
 import { Calculator, type TransferField } from '../components/Calculator'
 import { CashCalculator } from '../components/CashCalculator'
+import { BankOperationsCalculator } from '../components/BankOperationsCalculator'
 import { Toast } from '../components/Toast'
 import { useCashBoxRows } from '../hooks/useCashBoxRows'
 import { useClosingCountdown } from '../hooks/useClosingCountdown'
@@ -87,6 +88,8 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
   const [showEmployeeNamesModal, setShowEmployeeNamesModal] = useState(false)
   /** نافذة شرح سبب انحراف الكاش أو البنك (نوع + الصف) */
   const [varianceExplanationModal, setVarianceExplanationModal] = useState<{ type: 'cash' | 'bank'; row: ClosureRow } | null>(null)
+  /** تأكيد إفراغ الصف: عرض نعم/لا قبل الإفراغ */
+  const [clearRowConfirmId, setClearRowConfirmId] = useState<string | null>(null)
 
   useEffect(() => {
     const btn = themeToggleRef.current
@@ -412,6 +415,52 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
       msg: `تعويض المصروفات يجب ألا يتخطى مبلغ المصروفات (المصروفات: ${formatCurrency(maxAllowed)})`,
       type: 'warning',
     })
+  }, [])
+
+  const handleClearRow = useCallback(
+    (id: string) => {
+      const r = rows.find((x) => x.id === id)
+      if (!r || r.status === 'closed') return
+      const patch: Partial<ClosureRow> = {
+        cash: 0,
+        sentToTreasury: 0,
+        expenseCompensation: 0,
+        expenses: 0,
+        expenseItems: [],
+        carriedExpenseCount: 0,
+        mada: 0,
+        visa: 0,
+        mastercard: 0,
+        bankTransfer: 0,
+        programBalanceCash: 0,
+        programBalanceBank: 0,
+        variance: 0,
+      }
+      updateRow(id, patch)
+      flushSync(() => {
+        setRows((prev) => {
+          const next = prev.map((x) => (x.id !== id ? x : { ...x, ...patch }))
+          const updated = next.find((x) => x.id === id)
+          if (updated) rowDataRef.current[id] = updated
+          return next
+        })
+      })
+      loadRows()
+      setClearRowConfirmId(null)
+      setCalculatorsResetKey((k) => k + 1)
+      setToast({ msg: 'تم إفراغ كل المدخلات في الصف النشط ومسح سجلات الحاسبات', type: 'success' })
+    },
+    [rows, loadRows]
+  )
+
+  const confirmClearRowYes = useCallback(() => {
+    if (clearRowConfirmId) {
+      handleClearRow(clearRowConfirmId)
+    }
+  }, [clearRowConfirmId, handleClearRow])
+
+  const confirmClearRowNo = useCallback(() => {
+    setClearRowConfirmId(null)
   }, [])
 
   const handleUpdate = useCallback(
@@ -815,7 +864,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
   }, [deleteAllClosedConfirm, adminCodeInput, loadRows])
 
   const transferFieldLabel = (f: TransferField) =>
-    f === 'cash' ? 'الكاش' : f === 'mada' ? 'مدى' : f === 'visa' ? 'فيزا' : f === 'mastercard' ? 'ماستر كارد' : 'تحويل بنكي'
+    f === 'cash' ? 'الكاش' : f === 'programBalanceBank' ? 'اجمالى الموازنه' : f === 'mada' ? 'مدى' : f === 'visa' ? 'فيزا' : f === 'mastercard' ? 'ماستر كارد' : 'تحويل بنكي'
 
   const handleApplyCashToRow = useCallback(
     (total: number) => {
@@ -831,6 +880,29 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
       }
       handleUpdate(firstActiveId, 'cash', total)
       setToast({ msg: `تم ترحيل ${formatCurrency(total)} إلى خانة الكاش`, type: 'success' })
+    },
+    [firstActiveId, rows, handleUpdate]
+  )
+
+  const handleTransferFromBankOps = useCallback(
+    (mada: number, visa: number, mastercard: number) => {
+      if (!firstActiveId) {
+        setToast({ msg: 'لا يوجد صف نشط لترحيل العمليات البنكية إليه', type: 'warning' })
+        return
+      }
+      const activeRow = rows.find((r) => r.id === firstActiveId)
+      if (!activeRow) return
+      const curMada = (activeRow.mada as number) ?? 0
+      const curVisa = (activeRow.visa as number) ?? 0
+      const curMaster = (activeRow.mastercard as number) ?? 0
+      handleUpdate(firstActiveId, 'mada', curMada + mada)
+      handleUpdate(firstActiveId, 'visa', curVisa + visa)
+      handleUpdate(firstActiveId, 'mastercard', curMaster + mastercard)
+      const parts: string[] = []
+      if (mada > 0) parts.push(`مدى ${formatCurrency(mada)}`)
+      if (visa > 0) parts.push(`فيزا ${formatCurrency(visa)}`)
+      if (mastercard > 0) parts.push(`ماستر ${formatCurrency(mastercard)}`)
+      setToast({ msg: `تم ترحيل العمليات البنكية: ${parts.join('، ') || '—'}`, type: 'success' })
     },
     [firstActiveId, rows, handleUpdate]
   )
@@ -1117,6 +1189,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                     onShowEmployeeNames={lastExcelEmployeeNamesList.length > 0 ? () => setShowEmployeeNamesModal(true) : undefined}
                     onShowVarianceExplanation={(type, row) => setVarianceExplanationModal({ type, row })}
                     currentUserName={name}
+                    onClearRow={(id) => setClearRowConfirmId(id)}
                   />
                 ))}
               </tbody>
@@ -1205,10 +1278,17 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
           ) : null}
         </div>
 
-        {/* الحاسبتان — تُصفَّران عند انتهاء مهلة الإغلاق للتجهيز لشفت جديد */}
-        <section className="grid grid-cols-1 sm:grid-cols-[1fr_minmax(420px,1.2fr)] gap-3 w-full max-w-4xl lg:max-w-5xl xl:max-w-6xl items-stretch">
-          <Calculator key={`calculator-${calculatorsResetKey}`} onTransfer={handleTransferFromCalculator} hasActiveRow={!!firstActiveId} />
-          <CashCalculator key={`cashCalculator-${calculatorsResetKey}`} onApplyToCash={handleApplyCashToRow} hasActiveRow={!!firstActiveId} />
+        {/* الحاسبات — تُصفَّر عند انتهاء مهلة الإغلاق للتجهيز لشفت جديد */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(280px,380px)_1fr_1fr] gap-4 w-full max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] items-stretch min-h-[420px] [&>div]:min-h-[380px]">
+          <div className="min-h-0 flex flex-col">
+            <Calculator key={`calculator-${calculatorsResetKey}`} onTransfer={handleTransferFromCalculator} hasActiveRow={!!firstActiveId} />
+          </div>
+          <div className="min-h-0 flex flex-col">
+            <CashCalculator key={`cashCalculator-${calculatorsResetKey}`} onApplyToCash={handleApplyCashToRow} hasActiveRow={!!firstActiveId} />
+          </div>
+          <div className="min-h-0 flex flex-col">
+            <BankOperationsCalculator key={`bankOps-${calculatorsResetKey}`} onTransfer={handleTransferFromBankOps} hasActiveRow={!!firstActiveId} />
+          </div>
         </section>
       </main>
 
@@ -1471,6 +1551,35 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
               <button
                 type="button"
                 onClick={handleTransferConfirmNo}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+              >
+                لا
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {clearRowConfirmId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="clear-row-confirm-title">
+          <div className="rounded-2xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <h2 id="clear-row-confirm-title" className="text-lg font-bold text-amber-400 mb-3">
+              إفراغ الصف
+            </h2>
+            <p className="text-slate-300 dark:text-slate-300 text-sm leading-relaxed mb-4">
+              هل تريد إفراغ كل المدخلات في هذا الصف؟ (كاش، مدى، فيزا، ماستر، اجمالى الموازنه، مصروفات، وغيرها)
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={confirmClearRowYes}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition"
+              >
+                نعم
+              </button>
+              <button
+                type="button"
+                onClick={confirmClearRowNo}
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
               >
                 لا

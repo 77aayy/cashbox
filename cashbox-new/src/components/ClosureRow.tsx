@@ -33,6 +33,8 @@ interface ClosureRowProps {
   onShowVarianceExplanation?: (type: 'cash' | 'bank', row: Row) => void
   /** اسم المستخدم الحالي (الجلسة) — يُعرض للصف النشط الأول بدل row.employeeName ليكون موحّداً مع الهيدر وزر الإغلاق */
   currentUserName?: string
+  /** إفراغ كل المدخلات في الصف النشط */
+  onClearRow?: (id: string) => void
 }
 
 const NUM_KEYS: (keyof Row)[] = ['cash', 'sentToTreasury', 'expenseCompensation', 'expenses', 'programBalanceCash', 'mada', 'visa', 'mastercard', 'bankTransfer', 'programBalanceBank']
@@ -58,6 +60,7 @@ export function ClosureRowComp({
   onShowEmployeeNames,
   onShowVarianceExplanation,
   currentUserName,
+  onClearRow,
 }: ClosureRowProps) {
   const displayName = isFirstActive && currentUserName ? currentUserName : row.employeeName
   const bankVariance = useMemo(() => computeBankVariance(row), [
@@ -418,9 +421,20 @@ export function ClosureRowComp({
             )}
           </div>
         ) : (
-          <span className="inline-flex items-center justify-center gap-0.5 rounded-full px-1.5 py-0.5 bg-amber-100 dark:bg-amber-500/15 border border-amber-300 dark:border-amber-500/25 text-[9px] font-medium text-amber-700 dark:text-amber-400 font-cairo whitespace-nowrap w-full min-w-0 truncate">
-            الشفت الحالي
-          </span>
+          onClearRow ? (
+            <button
+              type="button"
+              onClick={() => onClearRow(row.id)}
+              title="افراغ كل المدخلات في الصف النشط"
+              className="inline-flex items-center justify-center gap-0.5 rounded-full px-1.5 py-0.5 bg-amber-100 dark:bg-amber-500/15 border border-amber-300 dark:border-amber-500/25 text-[9px] font-medium text-amber-700 dark:text-amber-400 font-cairo whitespace-nowrap w-full min-w-0 truncate hover:bg-amber-200 dark:hover:bg-amber-500/25 transition"
+            >
+              افراغ الصف
+            </button>
+          ) : (
+            <span className="inline-flex items-center justify-center gap-0.5 rounded-full px-1.5 py-0.5 bg-amber-100 dark:bg-amber-500/15 border border-amber-300 dark:border-amber-500/25 text-[9px] font-medium text-amber-700 dark:text-amber-400 font-cairo whitespace-nowrap w-full min-w-0 truncate">
+              الشفت الحالي
+            </span>
+          )
         )}
       </td>
       </tr>

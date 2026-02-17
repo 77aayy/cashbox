@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 type Op = '+' | '-' | '*' | '/' | '%'
 
-export type TransferField = 'cash' | 'mada' | 'visa' | 'mastercard' | 'bankTransfer'
+export type TransferField = 'cash' | 'mada' | 'visa' | 'mastercard' | 'bankTransfer' | 'programBalanceBank'
 
 interface CalculatorProps {
   onTransfer?: (amount: number, field: TransferField) => void
@@ -17,20 +17,15 @@ const KEY_MAP: Record<string, string> = {
   ',': '.',
 }
 
-/** ترحيل من الحاسبة: مدى، فيزا، ماستر كارد، تحويل بنكي (كاش من حاسبة الكاش) */
-const TRANSFER_OPTIONS: { field: TransferField; label: string; icon: JSX.Element }[] = [
-  { field: 'mada', label: 'مدى', icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="1"/><path d="M2 10h20M7 14h2"/></svg> },
-  { field: 'visa', label: 'فيزا', icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="1"/><path d="M2 12h20M9 9v6"/></svg> },
-  { field: 'mastercard', label: 'ماستر كارد', icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="1"/><path d="M2 12h20M12 9v6"/></svg> },
-  { field: 'bankTransfer', label: 'تحويل بنكي', icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17L2 12l5-5"/><path d="M2 12h15"/><path d="M17 7l5 5-5 5"/><path d="M22 12H7"/></svg> },
-]
+/** ترحيل من الآلة الحاسبة حصراً إلى خانة واحدة: اجمالى الموازنه */
+const CALCULATOR_TRANSFER_FIELD: TransferField = 'programBalanceBank'
+const CALCULATOR_TRANSFER_LABEL = 'اجمالى الموازنه'
 
 export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
   const [display, setDisplay] = useState('0')
   const [expression, setExpression] = useState('')
   const [history, setHistory] = useState<string[]>([])
   const [showHistory, setShowHistory] = useState(false)
-  const [showTransferMenu, setShowTransferMenu] = useState(false)
   const currentRef = useRef('0')
   const prevRef = useRef('')
   const opRef = useRef<Op | null>(null)
@@ -218,7 +213,7 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
   return (
     <div
       ref={containerRef}
-      className="w-[80%] max-w-full h-full min-h-0 flex flex-col rounded-2xl overflow-hidden mx-auto border border-slate-400 dark:border-amber-500/20 bg-white dark:bg-slate-800/50 shadow-[0_4px_24px_rgba(0,0,0,0.12),0_0_1px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm"
+      className="w-full h-full min-h-0 flex flex-col rounded-2xl overflow-hidden border border-slate-400 dark:border-amber-500/20 bg-white dark:bg-slate-800/50 shadow-[0_4px_24px_rgba(0,0,0,0.12),0_0_1px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm"
       tabIndex={0}
       title="انقر هنا ثم استخدم لوحة المفاتيح. النتيجة لا تتغير عند الكتابة في الجدول."
     >
@@ -265,48 +260,22 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
           </div>
         </div>
         {onTransfer && (
-          <div className="relative z-10">
-            <button
-              type="button"
-              onClick={() => {
-                const n = parseFloat(display) || 0
-                if (!hasActiveRow || n <= 0) return
-                setShowTransferMenu((v) => !v)
-              }}
-              disabled={!hasActiveRow || !(parseFloat(display) || 0)}
-              title="ترحيل الرقم إلى عمود"
-              className="w-full py-2 rounded-xl text-sm font-cairo font-medium bg-teal-500 hover:bg-teal-600 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-white dark:text-emerald-400 border border-teal-400 dark:border-emerald-500/40 disabled:opacity-50 disabled:pointer-events-none transition flex items-center justify-center gap-2"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              ترحيل الرقم
-            </button>
-            {showTransferMenu && (
-              <>
-                <div className="absolute left-0 right-0 top-full mt-1 z-10 rounded-xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-xl py-2" role="menu">
-                  <div className="text-xs text-slate-700 font-cairo px-3 mb-1.5">أين تريد الترحيل؟</div>
-                  {TRANSFER_OPTIONS.map(({ field, label, icon }) => (
-                    <button
-                      key={field}
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        const amount = parseFloat(display) || 0
-                        if (amount > 0) onTransfer(amount, field)
-                        setShowTransferMenu(false)
-                        updateDisplay('0')
-                        setExpression('')
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-right font-cairo text-sm text-slate-700 dark:text-slate-200 hover:bg-teal-50 hover:text-teal-700 dark:hover:bg-amber-500/20 dark:hover:text-amber-400 transition"
-                    >
-                      <span className="text-teal-500 dark:text-amber-400/90">{icon}</span>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <div className="fixed inset-0 z-[9]" aria-hidden="true" onClick={() => setShowTransferMenu(false)} />
-              </>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const amount = parseFloat(display) || 0
+              if (!hasActiveRow || amount <= 0) return
+              onTransfer(amount, CALCULATOR_TRANSFER_FIELD)
+              updateDisplay('0')
+              setExpression('')
+            }}
+            disabled={!hasActiveRow || !(parseFloat(display) || 0)}
+            title={`ترحيل الرقم إلى ${CALCULATOR_TRANSFER_LABEL}`}
+            className="w-full py-2 rounded-xl text-sm font-cairo font-medium bg-teal-500 hover:bg-teal-600 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-white dark:text-emerald-400 border border-teal-400 dark:border-emerald-500/40 disabled:opacity-50 disabled:pointer-events-none transition flex items-center justify-center gap-2"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            ترحيل إلى {CALCULATOR_TRANSFER_LABEL}
+          </button>
         )}
         <div className="grid grid-cols-4 gap-2">
           {keys.flat().map((k) => (

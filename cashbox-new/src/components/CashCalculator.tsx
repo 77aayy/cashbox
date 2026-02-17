@@ -8,45 +8,92 @@ interface CashCalculatorProps {
   hasActiveRow: boolean
 }
 
+const emptyCounts = () => Object.fromEntries(DENOMS.map((d) => [d, 0]))
+
 export function CashCalculator({ onApplyToCash, hasActiveRow }: CashCalculatorProps) {
-  const [counts, setCounts] = useState<Record<number, number>>(
-    Object.fromEntries(DENOMS.map((d) => [d, 0]))
-  )
+  const [counts, setCounts] = useState<Record<number, number>>(emptyCounts())
+  const [lastTransferredCounts, setLastTransferredCounts] = useState<Record<number, number>>(emptyCounts())
+  const [showLastTransferred, setShowLastTransferred] = useState(false)
 
   const grandTotal = DENOMS.reduce((sum, d) => sum + (counts[d] ?? 0) * d, 0)
+  const lastTransferredTotal = DENOMS.reduce((sum, d) => sum + (lastTransferredCounts[d] ?? 0) * d, 0)
 
   const setCount = useCallback((denom: number, value: number) => {
     setCounts((c) => ({ ...c, [denom]: value }))
   }, [])
 
   const handleClear = useCallback(() => {
-    setCounts(Object.fromEntries(DENOMS.map((d) => [d, 0])))
+    setCounts(emptyCounts())
   }, [])
 
   const handleApply = useCallback(() => {
     if (!hasActiveRow) return
+    setLastTransferredCounts({ ...counts })
     onApplyToCash(grandTotal)
     handleClear()
-  }, [hasActiveRow, grandTotal, onApplyToCash, handleClear])
+  }, [hasActiveRow, grandTotal, onApplyToCash, handleClear, counts])
 
   return (
     <div className="w-full h-full min-h-0 flex flex-col rounded-2xl overflow-hidden border border-slate-400 dark:border-amber-500/20 bg-white dark:bg-slate-800/50 shadow-[0_4px_24px_rgba(0,0,0,0.1),0_0_1px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm">
       {/* هيدر مطابق للآلة الحاسبة */}
-      <div className="bg-gradient-to-b from-teal-100 to-slate-200 dark:from-amber-500/15 dark:to-slate-800/60 px-4 py-3 border-b-2 border-teal-300 dark:border-amber-500/25 flex items-center justify-between gap-2 shrink-0 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
-        <h3 className="flex items-center gap-2.5 text-base font-semibold text-teal-700 dark:text-amber-400 font-cairo tracking-wide">
-          <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-teal-100 dark:bg-amber-500/20 text-teal-600 dark:text-amber-400">
-            <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="2" y="5" width="20" height="14" rx="2" />
-              <path d="M2 10h20M2 14h20M7 8v8M12 8v8M17 8v8" />
+      <div className="relative bg-gradient-to-b from-teal-100 to-slate-200 dark:from-amber-500/15 dark:to-slate-800/60 px-4 py-3 border-b-2 border-teal-300 dark:border-amber-500/25 flex items-center justify-between gap-2 shrink-0 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
+        <div className="flex items-center gap-2">
+          <h3 className="flex items-center gap-2.5 text-base font-semibold text-teal-700 dark:text-amber-400 font-cairo tracking-wide">
+            <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-teal-100 dark:bg-amber-500/20 text-teal-600 dark:text-amber-400">
+              <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="2" y="5" width="20" height="14" rx="2" />
+                <path d="M2 10h20M2 14h20M7 8v8M12 8v8M17 8v8" />
+              </svg>
+            </span>
+            حاسبة الكاش
+          </h3>
+          <button
+            type="button"
+            onClick={() => setShowLastTransferred((v) => !v)}
+            className={`p-1.5 rounded-lg transition shrink-0 ${showLastTransferred ? 'bg-teal-100 text-teal-700 dark:bg-amber-500/20 dark:text-amber-400' : 'text-slate-600 dark:text-slate-400 hover:text-teal-600 hover:bg-slate-200 dark:hover:text-amber-400 dark:hover:bg-white/5'}`}
+            title="آخر عمليات رُحّلت إلى الكاش"
+            aria-label="سجل العمليات"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 6v6l4 2" />
             </svg>
-          </span>
-          حاسبة الكاش
-        </h3>
+          </button>
+        </div>
         <span className="text-xs font-semibold text-slate-700 font-cairo">المجموع</span>
         <span className="text-sm font-semibold text-teal-700 dark:text-amber-400 font-cairo tabular-nums">{grandTotal > 0 ? `${grandTotal} ريال سعودي` : '— ريال سعودي'}</span>
+        {showLastTransferred && (
+          <>
+            <div className="fixed inset-0 z-10" aria-hidden onClick={() => setShowLastTransferred(false)} />
+            <div className="absolute left-0 top-full mt-1 z-20 rounded-xl border border-slate-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-xl py-2 px-3 text-xs font-cairo min-w-[160px]">
+              <div className="font-semibold text-teal-700 dark:text-amber-400 mb-1.5">آخر عمليات رُحّلت إلى الكاش:</div>
+              {lastTransferredTotal === 0 ? (
+                <p className="text-slate-500 dark:text-slate-400">لم يُرحّل أي مبلغ بعد</p>
+              ) : (
+                <>
+                  <ul className="space-y-0.5 mb-1">
+                    {DENOMS.map((d) => {
+                      const n = lastTransferredCounts[d] ?? 0
+                      if (n === 0) return null
+                      return (
+                        <li key={d} className="tabular-nums text-slate-700 dark:text-slate-200">
+                          فئة {d}: {n} × {d} = {n * d} ريال
+                        </li>
+                      )
+                    })}
+                  </ul>
+                  <p className="border-t border-slate-200 dark:border-white/10 pt-1 font-semibold text-teal-700 dark:text-amber-400 tabular-nums">
+                    المجموع: {lastTransferredTotal} ريال سعودي
+                  </p>
+                </>
+              )}
+              <button type="button" onClick={() => setShowLastTransferred(false)} className="mt-2 w-full py-1 rounded bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 text-[10px]">إغلاق</button>
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="flex-1 flex flex-col p-5 min-h-0 overflow-hidden gap-4">
+      <div className="flex-1 flex flex-col p-4 min-h-0 overflow-hidden gap-4">
         {/* صفّان: 4 + 3 خانات — نفس الحجم المريح */}
         <div className="grid grid-cols-4 gap-4 shrink-0">
           {DENOMS.map((d) => {
@@ -107,23 +154,21 @@ export function CashCalculator({ onApplyToCash, hasActiveRow }: CashCalculatorPr
           <span className="text-base font-semibold tabular-nums">{grandTotal > 0 ? `${grandTotal} ريال سعودي` : '— ريال سعودي'}</span>
         </div>
 
-        {/* أزرار */}
+        {/* أزرار — متساوية العرض والارتفاع */}
         <div className="flex gap-2 shrink-0">
           <button
             type="button"
             onClick={handleApply}
             disabled={!hasActiveRow || grandTotal === 0}
-            className="flex-1 py-2.5 rounded-xl text-sm font-cairo font-medium bg-teal-500 hover:bg-teal-600 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-white dark:text-emerald-400 border border-teal-400 dark:border-emerald-500/40 disabled:opacity-50 disabled:pointer-events-none transition-all shadow-md dark:shadow-[0_2px_8px_rgba(16,185,129,0.15)]"
+            className="flex-1 min-w-0 py-2.5 rounded-xl text-sm font-cairo font-medium bg-teal-500 hover:bg-teal-600 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-white dark:text-emerald-400 border border-teal-400 dark:border-emerald-500/40 disabled:opacity-50 disabled:pointer-events-none transition-all flex items-center justify-center gap-2"
           >
-            <span className="inline-flex items-center gap-2">
-              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-              ترحيل للكاش
-            </span>
+            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            ترحيل للكاش
           </button>
           <button
             type="button"
             onClick={handleClear}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-cairo font-medium bg-slate-300 dark:bg-slate-600/50 hover:bg-slate-400 dark:hover:bg-slate-500/60 text-slate-800 dark:text-slate-300 border border-slate-400 dark:border-white/10 transition-all"
+            className="flex-1 min-w-0 py-2.5 rounded-xl text-sm font-cairo font-medium bg-slate-300 dark:bg-slate-600/50 hover:bg-slate-400 dark:hover:bg-slate-500/60 text-slate-800 dark:text-slate-300 border border-slate-400 dark:border-white/10 transition-all flex items-center justify-center gap-2"
           >
             <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M10 11v6M14 11v6"/></svg>
             مسح
