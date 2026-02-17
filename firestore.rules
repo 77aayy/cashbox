@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // الصفوف المغلقة فقط — branches/{branch}/closedRows/{rowId}
+    // السماح بالقراءة والكتابة للجميع (لا يوجد مصادقة حالياً)
+    // للحد من الوصول لاحقاً: أضف قواعد مصادقة
+    match /branches/{branch}/closedRows/{rowId} {
+      allow read, write: if true;
+    }
+  }
+}

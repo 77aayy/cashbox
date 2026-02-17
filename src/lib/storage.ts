@@ -1,58 +1,73 @@
 import type { ClosureRow } from '../types'
+import { addClosedRowToFirebase, deleteClosedRowFromFirebase } from './firebaseClosedRows'
 
-const KEY = 'cashbox_rows'
+export type Branch = 'corniche' | 'andalusia'
+
+function storageKey(branch: Branch): string {
+  return `cashbox_rows_${branch}`
+}
 
 function id(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-function load(): ClosureRow[] {
+function normalizeRow(r: ClosureRow): ClosureRow {
+  const raw = r as { expenseItems?: unknown; expenseCompensation?: number; carriedExpenseCount?: number; sentToTreasury?: number }
+  const expenseItems = Array.isArray(raw.expenseItems)
+    ? (raw.expenseItems as { amount: number; description: string }[]).filter(
+        (x) => typeof x.amount === 'number' && typeof x.description === 'string'
+      )
+    : []
+  return {
+    ...r,
+    sentToTreasury: typeof raw.sentToTreasury === 'number' ? raw.sentToTreasury : 0,
+    expenseCompensation: typeof raw.expenseCompensation === 'number' ? raw.expenseCompensation : 0,
+    expenses: typeof (r as { expenses?: number }).expenses === 'number' ? (r as { expenses: number }).expenses : 0,
+    carriedExpenseCount: typeof raw.carriedExpenseCount === 'number' && raw.carriedExpenseCount >= 0 ? raw.carriedExpenseCount : 0,
+    expenseItems,
+    mastercard: typeof (r as { mastercard?: number }).mastercard === 'number' ? (r as { mastercard: number }).mastercard : 0,
+    programBalanceCash: typeof r.programBalanceCash === 'number' ? r.programBalanceCash : 0,
+    programBalanceBank: typeof r.programBalanceBank === 'number' ? r.programBalanceBank : 0,
+  }
+}
+
+/** تحميل الصفوف النشطة فقط من localStorage */
+function loadActive(branch: Branch): ClosureRow[] {
   try {
-    const raw = localStorage.getItem(KEY)
+    const key = storageKey(branch)
+    let raw = localStorage.getItem(key)
+    if (!raw && branch === 'corniche') {
+      const legacy = localStorage.getItem('cashbox_rows')
+      if (legacy) {
+        localStorage.setItem(key, legacy)
+        localStorage.removeItem('cashbox_rows')
+        raw = legacy
+      }
+    }
     if (!raw) return []
     const list = JSON.parse(raw) as ClosureRow[]
-    return list.map((r) => {
-      const raw = r as { expenseItems?: unknown; expenseCompensation?: number; carriedExpenseCount?: number; sentToTreasury?: number }
-      const expenseItems = Array.isArray(raw.expenseItems)
-        ? (raw.expenseItems as { amount: number; description: string }[]).filter(
-            (x) => typeof x.amount === 'number' && typeof x.description === 'string'
-          )
-        : []
-      return {
-        ...r,
-        sentToTreasury: typeof raw.sentToTreasury === 'number' ? raw.sentToTreasury : 0,
-        expenseCompensation: typeof raw.expenseCompensation === 'number' ? raw.expenseCompensation : 0,
-        expenses: typeof (r as { expenses?: number }).expenses === 'number' ? (r as { expenses: number }).expenses : 0,
-        carriedExpenseCount: typeof raw.carriedExpenseCount === 'number' && raw.carriedExpenseCount >= 0 ? raw.carriedExpenseCount : 0,
-        expenseItems,
-        mastercard: typeof (r as { mastercard?: number }).mastercard === 'number' ? (r as { mastercard: number }).mastercard : 0,
-        programBalanceCash: typeof r.programBalanceCash === 'number' ? r.programBalanceCash : 0,
-        programBalanceBank: typeof r.programBalanceBank === 'number' ? r.programBalanceBank : 0,
-      }
-    })
+    return list.filter((r) => r.status !== 'closed').map(normalizeRow)
   } catch {
     return []
   }
 }
 
-function save(rows: ClosureRow[]): void {
+function saveActive(branch: Branch, rows: ClosureRow[]): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(rows))
+    localStorage.setItem(storageKey(branch), JSON.stringify(rows.filter((r) => r.status !== 'closed')))
   } catch {
     // ignore
   }
 }
 
-export function getRows(): ClosureRow[] {
-  const rows = load()
-  const active = rows.filter((r) => r.status !== 'closed').sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-  const closed = rows.filter((r) => r.status === 'closed').sort((a, b) => new Date((b.closedAt ?? '').toString()).getTime() - new Date((a.closedAt ?? '').toString()).getTime())
-  return [...active, ...closed]
+/** الصفوف النشطة فقط — من localStorage */
+export function getActiveRows(branch: Branch): ClosureRow[] {
+  return loadActive(branch).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 }
 
 /** يُستخدم عند الإغلاق لدمج أحدث البيانات من الـ state مع الـ storage */
-export function getRowById(rowId: string): ClosureRow | null {
-  const rows = load()
+export function getRowById(branch: Branch, rowId: string): ClosureRow | null {
+  const rows = loadActive(branch)
   return rows.find((r) => r.id === rowId) ?? null
 }
 
@@ -62,8 +77,8 @@ export interface AddRowInitial {
   carriedExpenseCount: number
 }
 
-export function addRow(employeeName: string, initial?: AddRowInitial): void {
-  const rows = load()
+export function addRow(branch: Branch, employeeName: string, initial?: AddRowInitial): void {
+  const rows = loadActive(branch)
   const now = new Date().toISOString()
   const expenses = initial?.expenses ?? 0
   const expenseItems = initial?.expenseItems ?? []
@@ -89,44 +104,39 @@ export function addRow(employeeName: string, initial?: AddRowInitial): void {
     closedAt: null,
     createdAt: now,
   })
-  save(rows)
+  saveActive(branch, rows)
 }
 
-export function updateRow(rowId: string, patch: Partial<ClosureRow>): void {
-  const rows = load()
+export function updateRow(branch: Branch, rowId: string, patch: Partial<ClosureRow>): void {
+  const rows = loadActive(branch)
   const i = rows.findIndex((r) => r.id === rowId)
   if (i === -1) return
   rows[i] = { ...rows[i]!, ...patch }
-  save(rows)
+  saveActive(branch, rows)
 }
 
-export function closeRow(rowId: string, row: ClosureRow): void {
-  const rows = load()
-  const i = rows.findIndex((r) => r.id === rowId)
-  if (i === -1) return
+/** إغلاق الشفت: ترحيل الصف إلى Firebase فوراً، وإزالته من localStorage */
+export async function closeRow(branch: Branch, rowId: string, row: ClosureRow): Promise<void> {
   const now = new Date().toISOString()
-  rows[i] = {
-    ...rows[i]!,
-    ...row,
-    status: 'closed',
-    closedAt: now,
+  const closedRow: ClosureRow = { ...row, status: 'closed', closedAt: now }
+  await addClosedRowToFirebase(branch, closedRow)
+  const rows = loadActive(branch).filter((r) => r.id !== rowId)
+  saveActive(branch, rows)
+}
+
+/** حذف صف — إن كان نشطاً من localStorage، وإن كان مغلقاً من Firebase */
+export async function deleteRow(branch: Branch, rowId: string, isClosed: boolean): Promise<void> {
+  if (isClosed) {
+    await deleteClosedRowFromFirebase(branch, rowId)
+  } else {
+    const rows = loadActive(branch).filter((r) => r.id !== rowId)
+    saveActive(branch, rows)
   }
-  save(rows)
 }
 
-export function deleteRow(rowId: string): void {
-  const rows = load().filter((r) => r.id !== rowId)
-  save(rows)
-}
-
-export function deleteAllClosedRows(): void {
-  const rows = load().filter((r) => r.status !== 'closed')
-  save(rows)
-}
-
-export function getClosedForPrint(limit: number): ClosureRow[] {
-  return load()
-    .filter((r) => r.status === 'closed' && r.closedAt)
-    .sort((a, b) => new Date((b.closedAt ?? '').toString()).getTime() - new Date((a.closedAt ?? '').toString()).getTime())
-    .slice(0, limit)
+/** حذف كل الصفوف المغلقة من Firebase */
+export async function deleteAllClosedRows(branch: Branch): Promise<void> {
+  const { getClosedRowsFromFirebase, deleteClosedRowFromFirebase: delClosed } = await import('./firebaseClosedRows')
+  const closed = await getClosedRowsFromFirebase(branch)
+  await Promise.all(closed.map((r) => delClosed(branch, r.id)))
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { Branch } from '../lib/storage'
 
 const LETTERS_ONLY = /^[\p{L}\s]*$/u
 
@@ -6,12 +7,18 @@ function isLettersOnly(s: string): boolean {
   return LETTERS_ONLY.test(s) && s.length > 0 && /\p{L}/u.test(s)
 }
 
+const BRANCHES: { id: Branch; label: string }[] = [
+  { id: 'corniche', label: 'الكورنيش' },
+  { id: 'andalusia', label: 'الأندلس' },
+]
+
 interface WelcomeProps {
-  onEnter: (name: string) => void
+  onEnter: (name: string, branch: Branch) => void
 }
 
 export function Welcome({ onEnter }: WelcomeProps) {
   const [name, setName] = useState('')
+  const [branch, setBranch] = useState<Branch>('corniche')
   const [error, setError] = useState('')
 
   const canSubmit = isLettersOnly(name.trim())
@@ -35,7 +42,7 @@ export function Welcome({ onEnter }: WelcomeProps) {
       return
     }
     setError('')
-    onEnter(trimmed)
+    onEnter(trimmed, branch)
   }
 
   return (
@@ -65,6 +72,27 @@ export function Welcome({ onEnter }: WelcomeProps) {
               autoComplete="off"
               autoFocus
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-stone-800 dark:text-slate-300 mb-2 font-cairo">
+              الفرع
+            </label>
+            <div className="flex gap-2">
+              {BRANCHES.map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => setBranch(b.id)}
+                  className={`flex-1 py-3 rounded-xl font-cairo font-semibold text-sm border-2 transition ${
+                    branch === b.id
+                      ? 'bg-primary-500 border-primary-600 text-white dark:bg-amber-500/30 dark:border-amber-500/50 dark:text-amber-200'
+                      : 'bg-stone-100 dark:bg-slate-900/80 border-stone-300 dark:border-white/20 text-stone-700 dark:text-slate-300 hover:border-primary-400 dark:hover:border-amber-500/40'
+                  }`}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </div>
           </div>
           <button
             type="submit"

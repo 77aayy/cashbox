@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title رفع على GitHub
+title رفع على GitHub و Firebase
 
 cd /d "%~dp0"
 
@@ -28,10 +28,19 @@ echo.
 echo نشر الموقع على GitHub Pages...
 call npm run deploy
 if errorlevel 1 (
-  echo فشل النشر. تحقق من الاتصال أو صلاحيات GitHub.
+  echo فشل نشر GitHub Pages. تحقق من الاتصال أو صلاحيات GitHub.
 ) else (
-  echo تم النشر — الموقع محدّث: https://77aayy.github.io/cashbox/
+  echo تم النشر على GitHub Pages: https://77aayy.github.io/cashbox/
 )
 
 echo.
-echo تم رفع المشروع إلى GitHub بنجاح.
+echo نشر قواعد Firestore على Firebase...
+call firebase deploy
+if errorlevel 1 (
+  echo فشل نشر Firebase. تحقق من تسجيل الدخول: firebase login
+) else (
+  echo تم نشر Firebase بنجاح.
+)
+
+echo.
+echo تم تحديث Git و Firebase بنجاح.

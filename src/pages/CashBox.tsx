@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { getRows, getRowById, addRow, updateRow, closeRow, getClosedForPrint, deleteRow, deleteAllClosedRows } from '../lib/storage'
+import { getRowById, addRow, updateRow, closeRow, deleteRow, deleteAllClosedRows, type Branch } from '../lib/storage'
+import { getClosedRowsFromFirebase } from '../lib/firebaseClosedRows'
 import { parseBankTransactionsExcel, type ExcelDetails } from '../lib/excelParser'
 import { computeBankVariance, computeCashVariance, computeVariance, formatCurrency, formatDateTime, filterByPreset, getGreeting, toLatinDigits } from '../lib/utils'
 import { ClosureRowComp } from '../components/ClosureRow'
@@ -15,7 +16,6 @@ import type { ClosureRow, FilterPreset } from '../types'
 import type { ThemeMode } from '../App'
 import { toggleTheme as doToggleTheme } from '../lib/theme'
 
-const ROWS_PER_PAGE = 5
 const UNDO_SECONDS = 10
 /** أقصى فرق (ريال) بين انحراف الكاش وانحراف البنك لاعتبارها "نفس القيمة" وتنبيه احتمال الخلط نقداً ↔ شبكة */
 const VARIANCE_SWAP_TOLERANCE_SAR = 2
@@ -31,9 +31,16 @@ const FILTERS: { id: FilterPreset; label: string }[] = [
   { id: 'lastWeek', label: 'الأسبوع الماضي' },
 ]
 
+const BRANCH_LABELS: Record<Branch, string> = {
+  corniche: 'الكورنيش',
+  andalusia: 'الأندلس',
+}
+
 interface CashBoxProps {
   name: string
+  branch: Branch
   onExit: () => void
+  onSwitchBranch: (newBranch: Branch) => void
   theme: ThemeMode
   onToggleTheme: () => void
 }
@@ -42,9 +49,10 @@ function handleThemeToggle() {
   doToggleTheme()
 }
 
-export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: CashBoxProps) {
+export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleTheme: _onToggleTheme }: CashBoxProps) {
   const themeToggleRef = useRef<HTMLButtonElement>(null)
-  const { rows, setRows, loadRows, debounceRef, rowDataRef } = useCashBoxRows(name)
+  const [switchBranchConfirm, setSwitchBranchConfirm] = useState<Branch | null>(null)
+  const { rows, setRows, loadRows, loading, debounceRef, rowDataRef, currentClosedPage, goToClosedPage, hasMoreClosedPages } = useCashBoxRows(name, branch)
   const {
     liveNow,
     closingRowId,
@@ -56,7 +64,6 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
   } = useClosingCountdown()
 
   const [filter, setFilter] = useState<FilterPreset>('today')
-  const [currentPage, setCurrentPage] = useState(1)
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'warning' | 'info'; autoHideMs?: number } | null>(null)
   /** تأكيد الترحيل عندما يوجد رقم في الخانة (كاش أو مدى أو فيزا أو تحويل بنكي) */
   const [transferConfirm, setTransferConfirm] = useState<{ amount: number; currentValue: number; field: TransferField } | null>(null)
@@ -78,6 +85,8 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
   const [deleteCarriedConfirm, setDeleteCarriedConfirm] = useState<{ rowId: string; itemIndex: number; step: 'confirm' | 'code' } | null>(null)
   const [adminCodeInput, setAdminCodeInput] = useState('')
   const [showAdminCode, setShowAdminCode] = useState(false)
+  /** رسالة خطأ تظهر داخل نافذة كود الأدمن عند إدخال كود خاطئ */
+  const [adminCodeError, setAdminCodeError] = useState(false)
   /** تأكيد الإغلاق عند وجود انحراف: انحراف الكاش/البنك — نعم يبدأ العد، لا يكمل التعديل */
   const [closeConfirmVariance, setCloseConfirmVariance] = useState<{
     rowId: string
@@ -136,38 +145,41 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
     }
     setClosingRowId(null)
     setClosingEndsAt(null)
-    // تفريغ أي تحديث مؤجل لهذا الصف قبل القراءة من الـ storage
-    const pending = debounceRef.current[rowId]
-    if (pending) {
-      clearTimeout(pending)
-      delete debounceRef.current[rowId]
-      updateRow(rowId, fromState)
-    }
-    // دمج بيانات الـ state مع الـ storage حتى لا تُفقد أي مبالغ
-    const fromStorage = getRowById(rowId)
-    const merged = fromStorage
-      ? { ...fromStorage, ...fromState, id: rowId, status: 'active' as const }
-      : fromState
-    const v = computeVariance(merged)
-    closeRow(rowId, { ...merged, employeeName: name, variance: v })
-    // ترحيل المصروفات = الفرق فقط (مصروفات − تعويض). لو تعويض 200 ومصروفات 500 تُنقل 300 فقط. لو تعويض = مصروفات لا يُنقل مبلغ.
-    const closedExpenses = merged.expenses ?? 0
-    const closedCompensation = merged.expenseCompensation ?? 0
-    const netCarried = Math.max(0, closedExpenses - closedCompensation)
-    const closedItems = merged.expenseItems ?? []
-    const hasCompensation = closedCompensation > 0
-    const carriedItems = hasCompensation
-      ? (netCarried > 0 ? [{ amount: netCarried, description: 'مرحّل (صافي بعد التعويض)' }] : [])
-      : closedItems.map((it) => ({ amount: it.amount, description: it.description || '' }))
-    addRow(name, {
-      expenses: netCarried,
-      expenseItems: carriedItems,
-      carriedExpenseCount: carriedItems.length,
-    })
-    loadRows()
-    setToast({ msg: 'تم إغلاق الشفت وإضافة صف جديد', type: 'success' })
-    setCalculatorsResetKey((k) => k + 1)
-  }, [closingSecondsLeft, closingRowId, rows, name, loadRows])
+    ;(async () => {
+      try {
+        const pending = debounceRef.current[rowId]
+        if (pending) {
+          clearTimeout(pending)
+          delete debounceRef.current[rowId]
+          updateRow(branch, rowId, fromState)
+        }
+        const fromStorage = getRowById(branch, rowId)
+        const merged = fromStorage
+          ? { ...fromStorage, ...fromState, id: rowId, status: 'active' as const }
+          : fromState
+        const v = computeVariance(merged)
+        await closeRow(branch, rowId, { ...merged, employeeName: name, variance: v })
+        const closedExpenses = merged.expenses ?? 0
+        const closedCompensation = merged.expenseCompensation ?? 0
+        const netCarried = Math.max(0, closedExpenses - closedCompensation)
+        const closedItems = merged.expenseItems ?? []
+        const hasCompensation = closedCompensation > 0
+        const carriedItems = hasCompensation
+          ? (netCarried > 0 ? [{ amount: netCarried, description: 'مرحّل (صافي بعد التعويض)' }] : [])
+          : closedItems.map((it) => ({ amount: it.amount, description: it.description || '' }))
+        addRow(branch, name, {
+          expenses: netCarried,
+          expenseItems: carriedItems,
+          carriedExpenseCount: carriedItems.length,
+        })
+        await loadRows()
+        setToast({ msg: 'تم إغلاق الشفت وإضافة صف جديد', type: 'success' })
+        setCalculatorsResetKey((k) => k + 1)
+      } catch (e) {
+        setToast({ msg: 'فشل ترحيل الصف المغلَق إلى السحابة — تحقق من الاتصال', type: 'error' })
+      }
+    })()
+  }, [closingSecondsLeft, closingRowId, rows, name, loadRows, branch])
 
   const displayRows = useMemo(() => {
     const active = rows.filter((r) => r.status !== 'closed').sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -180,18 +192,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
     return closed
   }, [rows, filter])
 
-  const totalPages = Math.max(1, Math.ceil(displayRows.length / ROWS_PER_PAGE))
-  useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(1)
-  }, [currentPage, totalPages])
-  const visibleRows = useMemo(
-    () =>
-      displayRows.slice(
-        (currentPage - 1) * ROWS_PER_PAGE,
-        currentPage * ROWS_PER_PAGE
-      ),
-    [displayRows, currentPage]
-  )
+  const visibleRows = displayRows
   const firstActiveId = useMemo(
     () => displayRows.find((r) => r.status !== 'closed')?.id ?? null,
     [displayRows]
@@ -244,7 +245,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
       if (pending) {
         clearTimeout(pending)
         delete debounceRef.current[active.id]
-        updateRow(active.id, rowDataRef.current[active.id] ?? active)
+        updateRow(branch, active.id, rowDataRef.current[active.id] ?? active)
       }
       const current = (rowDataRef.current[active.id] ?? active) as ClosureRow
       /** استخراج فقط: مدى، فيزا، ماستر كارد، تحويل بنكي — لا نغيّر الكاش من التقرير */
@@ -257,7 +258,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
       const totalExtracted = sums.mada + sums.visa + sums.mastercard
       const employeeName = (excelEmployeeName && excelEmployeeName.trim() !== '') ? excelEmployeeName.trim() : current.employeeName
       const nextRow = { ...current, ...filled, employeeName, variance: computeVariance({ ...current, ...filled, employeeName }) }
-      updateRow(active.id, nextRow)
+      updateRow(branch, active.id, nextRow)
       rowDataRef.current[active.id] = nextRow
       setRows((prev) => prev.map((r) => (r.id === active.id ? nextRow : r)))
       loadRows()
@@ -290,7 +291,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
     const carriedCount = (row?.carriedExpenseCount ?? 0) as number
     const keptItems = (row?.expenseItems ?? []).slice(0, carriedCount)
     const newExpenses = keptItems.reduce((s, it) => s + it.amount, 0)
-    updateRow(rowId, { expenses: newExpenses, expenseItems: keptItems })
+    updateRow(branch, rowId, { expenses: newExpenses, expenseItems: keptItems })
     if (row) {
       const next = { ...row, expenses: newExpenses, expenseItems: keptItems, variance: computeVariance({ ...row, expenses: newExpenses, expenseItems: keptItems }) }
       rowDataRef.current[rowId] = next
@@ -331,6 +332,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
 
   const requestDeleteCarriedItem = useCallback((rowId: string, itemIndex: number) => {
     setAdminCodeInput('')
+    setAdminCodeError(false)
     setDeleteCarriedConfirm({ rowId, itemIndex, step: 'confirm' })
   }, [])
 
@@ -342,9 +344,11 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
   const submitDeleteCarriedWithCode = useCallback(() => {
     if (!deleteCarriedConfirm) return
     if (adminCodeInput.trim() !== getAdminCode()) {
-      setToast({ msg: 'كود الأدمن غير صحيح', type: 'error' })
+      setAdminCodeError(true)
+      setToast({ msg: 'كود الأدمن غير صحيح — أدخل الكود الصحيح وأعد المحاولة', type: 'error' })
       return
     }
+    setAdminCodeError(false)
     const { rowId, itemIndex } = deleteCarriedConfirm
     const row = rows.find((r) => r.id === rowId) ?? rowDataRef.current[rowId]
     if (!row) {
@@ -362,7 +366,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
     items.splice(itemIndex, 1)
     const newCarriedCount = Math.max(0, carriedCount - 1)
     const newExpenses = items.reduce((s, it) => s + it.amount, 0)
-    updateRow(rowId, { expenseItems: items, expenses: newExpenses, carriedExpenseCount: newCarriedCount })
+    updateRow(branch, rowId, { expenseItems: items, expenses: newExpenses, carriedExpenseCount: newCarriedCount })
     const updatedRow = { ...row, expenseItems: items, expenses: newExpenses, carriedExpenseCount: newCarriedCount }
     rowDataRef.current[rowId] = updatedRow
     setRows((prev) => prev.map((r) => (r.id === rowId ? updatedRow : r)))
@@ -396,7 +400,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
     }
     const finalItems = items.map(({ amount, description }) => ({ amount, description }))
     const total = finalItems.reduce((sum, it) => sum + it.amount, 0)
-    updateRow(rowId, { expenseItems: finalItems, expenses: total })
+    updateRow(branch, rowId, { expenseItems: finalItems, expenses: total })
     setExpenseModal(null)
     loadRows()
     // بعد إغلاق النافذة: تخطي رصيد البرنامج كاش [4] ونقل التركيز لأول حقل مفعّل بعده (مدى فما بعد)
@@ -447,7 +451,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         programBalanceBank: 0,
         variance: 0,
       }
-      updateRow(id, patch)
+      updateRow(branch, id, patch)
       flushSync(() => {
         setRows((prev) => {
           const next = prev.map((x) => (x.id !== id ? x : { ...x, ...patch }))
@@ -492,7 +496,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
       if (prev) clearTimeout(prev)
       debounceRef.current[id] = setTimeout(() => {
         const fullRow = rowDataRef.current[id]
-        if (fullRow) updateRow(id, fullRow)
+        if (fullRow) updateRow(branch, id, fullRow)
         loadRows()
       }, 400)
       flushSync(() => {
@@ -543,7 +547,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
   }, [])
 
   const printRows = useCallback(
-    (list: ClosureRow[], title: string, opts?: { firstActiveId: string | null; currentUserName: string }) => {
+    (list: ClosureRow[], title: string, opts?: { firstActiveId: string | null; currentUserName: string; branchLabel: string }) => {
       if (list.length === 0) {
         setToast({ msg: 'لا توجد تقفيلات للطباعة', type: 'warning' })
         return
@@ -553,7 +557,8 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         setToast({ msg: 'السماح بالنوافذ المنبثقة للطباعة', type: 'warning' })
         return
       }
-      const { firstActiveId: optsFirstActiveId, currentUserName } = opts ?? {}
+      const { firstActiveId: optsFirstActiveId, currentUserName, branchLabel } = opts ?? {}
+      const branchLabelHtml = branchLabel ? `<p class="page-branch">فرع ${branchLabel.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p>` : ''
       const pagesHtml = list
         .map((r, idx) => {
           const rawName = r.status === 'closed' ? r.employeeName : (optsFirstActiveId && r.id === optsFirstActiveId && currentUserName ? currentUserName : r.employeeName)
@@ -580,6 +585,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
             <div class="page" ${pageBreakStyle ? `style="${pageBreakStyle}"` : ''}>
               <header class="page-header">
                 <h1 class="page-title">تقرير تقفيلة</h1>
+                ${branchLabelHtml}
                 <p class="page-sub">${employeeNameForPrint}</p>
                 <p class="page-time">${r.closedAt ? formatDateTime(r.closedAt) : '—'}</p>
               </header>
@@ -612,7 +618,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
               ${notesHtml}
               <footer class="page-footer">
                 <p class="footer-formulas">بنك نزيل = مدى + فيزا + ماستر كارد (تحويل بنكي للعرض فقط) — انحراف البنك = بنك نزيل − اجمالى الموازنه — انحراف الكاش = (كاش + مرسل للخزنة + مصروفات فعّالة) − رصيد البرنامج كاش</p>
-                <p>تاريخ الطباعة: ${formatDateTime(new Date())} ${list.length > 1 ? ` — تقفيلة ${idx + 1} من ${list.length}` : ''}</p>
+                <p>${branchLabel ? `فرع ${branchLabel} — ` : ''}تاريخ الطباعة: ${formatDateTime(new Date())} ${list.length > 1 ? ` — تقفيلة ${idx + 1} من ${list.length}` : ''}</p>
               </footer>
             </div>`
         })
@@ -622,7 +628,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         <html dir="rtl" lang="ar">
           <head>
             <meta charset="utf-8">
-            <title>${title}</title>
+            <title>${branchLabel ? `${title} — فرع ${branchLabel}` : title}</title>
             <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
             <style>
               * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -685,6 +691,12 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
               .page-time {
                 font-size: 0.8rem;
                 color: #64748b;
+              }
+              .page-branch {
+                font-size: 0.9rem;
+                font-weight: 700;
+                color: #0f172a;
+                margin-bottom: 2px;
               }
               .grid {
                 display: grid;
@@ -787,11 +799,12 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
     []
   )
 
-  const handlePrintAll = useCallback(() => {
+  const handlePrintAll = useCallback(async () => {
     const limit = filter === 'today' ? 50 : filter === 'yesterday' ? 100 : 200
-    const list = filterByPreset(getClosedForPrint(limit), filter)
-    printRows(list, `تقرير التقفيلات — ${filter === 'today' ? 'اليوم' : filter === 'yesterday' ? 'أمس' : 'الأسبوع الماضي'}`, { firstActiveId, currentUserName: name })
-  }, [filter, printRows, firstActiveId, name])
+    const closed = await getClosedRowsFromFirebase(branch, limit)
+    const list = filterByPreset(closed, filter)
+    printRows(list, `تقرير التقفيلات — ${filter === 'today' ? 'اليوم' : filter === 'yesterday' ? 'أمس' : 'الأسبوع الماضي'}`, { firstActiveId, currentUserName: name, branchLabel: BRANCH_LABELS[branch] })
+  }, [filter, printRows, firstActiveId, name, branch])
 
   const toggleRowSelection = useCallback((id: string) => {
     setSelectedRowIds((prev) => {
@@ -808,20 +821,21 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
       return
     }
     const list = displayRows.filter((r) => selectedRowIds.has(r.id))
-    printRows(list, 'طباعة الصفوف المحددة', { firstActiveId, currentUserName: name })
-  }, [selectedRowIds, displayRows, printRows, firstActiveId, name])
+    printRows(list, 'طباعة الصفوف المحددة', { firstActiveId, currentUserName: name, branchLabel: BRANCH_LABELS[branch] })
+  }, [selectedRowIds, displayRows, printRows, firstActiveId, name, branch])
 
   const handlePrintRow = useCallback(
     (rowId: string) => {
       const row = displayRows.find((r) => r.id === rowId)
       if (!row) return
-      printRows([row], 'طباعة تقفيلة', { firstActiveId, currentUserName: name })
+      printRows([row], 'طباعة تقفيلة', { firstActiveId, currentUserName: name, branchLabel: BRANCH_LABELS[branch] })
     },
-    [displayRows, printRows, firstActiveId, name]
+    [displayRows, printRows, firstActiveId, name, branch]
   )
 
   const requestDeleteRow = useCallback((rowId: string) => {
     setAdminCodeInput('')
+    setAdminCodeError(false)
     setDeleteConfirm({ rowId, step: 'confirm' })
   }, [])
 
@@ -830,27 +844,32 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
     setDeleteConfirm((d) => (d ? { ...d, step: 'code' } : null))
   }, [deleteConfirm])
 
-  const submitDeleteWithCode = useCallback(() => {
+  const submitDeleteWithCode = useCallback(async () => {
     if (!deleteConfirm) return
     if (adminCodeInput.trim() !== getAdminCode()) {
-      setToast({ msg: 'كود الأدمن غير صحيح', type: 'error' })
+      setAdminCodeError(true)
+      setToast({ msg: 'كود الأدمن غير صحيح — أدخل الكود الصحيح وأعد المحاولة', type: 'error' })
       return
     }
-    deleteRow(deleteConfirm.rowId)
+    setAdminCodeError(false)
+    const row = rows.find((r) => r.id === deleteConfirm.rowId)
+    const isClosed = row?.status === 'closed'
+    await deleteRow(branch, deleteConfirm.rowId, isClosed)
     setSelectedRowIds((prev) => {
       const next = new Set(prev)
       next.delete(deleteConfirm.rowId)
       return next
     })
-    loadRows()
+    await loadRows()
     setDeleteConfirm(null)
     setAdminCodeInput('')
     setShowAdminCode(false)
     setToast({ msg: 'تم حذف الصف', type: 'success' })
-  }, [deleteConfirm, adminCodeInput, loadRows])
+  }, [deleteConfirm, adminCodeInput, loadRows, branch, rows])
 
   const requestDeleteAllClosed = useCallback(() => {
     setAdminCodeInput('')
+    setAdminCodeError(false)
     setDeleteAllClosedConfirm({ step: 'confirm' })
   }, [])
 
@@ -859,20 +878,22 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
     setDeleteAllClosedConfirm((d) => (d ? { ...d, step: 'code' } : null))
   }, [deleteAllClosedConfirm])
 
-  const submitDeleteAllClosedWithCode = useCallback(() => {
+  const submitDeleteAllClosedWithCode = useCallback(async () => {
     if (!deleteAllClosedConfirm) return
     if (adminCodeInput.trim() !== getAdminCode()) {
-      setToast({ msg: 'كود الأدمن غير صحيح', type: 'error' })
+      setAdminCodeError(true)
+      setToast({ msg: 'كود الأدمن غير صحيح — أدخل الكود الصحيح وأعد المحاولة', type: 'error' })
       return
     }
-    deleteAllClosedRows()
+    setAdminCodeError(false)
+    await deleteAllClosedRows(branch)
     setSelectedRowIds(new Set())
-    loadRows()
+    await loadRows()
     setDeleteAllClosedConfirm(null)
     setAdminCodeInput('')
     setShowAdminCode(false)
     setToast({ msg: 'تم حذف كل التقفيلات المغلقة', type: 'success' })
-  }, [deleteAllClosedConfirm, adminCodeInput, loadRows])
+  }, [deleteAllClosedConfirm, adminCodeInput, loadRows, branch])
 
   const transferFieldLabel = (f: TransferField) =>
     f === 'cash' ? 'الكاش' : f === 'programBalanceBank' ? 'اجمالى الموازنه' : f === 'mada' ? 'مدى' : f === 'visa' ? 'فيزا' : f === 'mastercard' ? 'ماستر كارد' : 'تحويل بنكي'
@@ -1037,6 +1058,9 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                 </h1>
               )
             })()}
+            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-teal-100 dark:bg-amber-500/15 text-teal-800 dark:text-amber-300 text-xs font-cairo font-semibold border border-teal-300 dark:border-amber-500/30">
+              فرع {BRANCH_LABELS[branch]}
+            </span>
             <div className="relative z-[50] rounded-xl border border-stone-300 dark:border-slate-600/50 bg-stone-200 dark:bg-slate-800/60 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(0,0,0,0.15)]">
               <button
                 ref={themeToggleRef}
@@ -1055,6 +1079,20 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                 ) : (
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
                 )}
+              </button>
+            </div>
+            <div className="rounded-xl border border-stone-300 dark:border-slate-600/50 bg-stone-200 dark:bg-slate-800/60 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(0,0,0,0.15)]">
+              <button
+                type="button"
+                onClick={() => setSwitchBranchConfirm(branch === 'corniche' ? 'andalusia' : 'corniche')}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-stone-800 hover:text-teal-600 hover:bg-teal-500/15 dark:text-slate-400 dark:hover:text-amber-400 dark:hover:bg-amber-500/10 text-xs font-cairo transition"
+                title="تغيير الفرع"
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                  <polyline points="9 22 9 12 15 12 15 22" />
+                </svg>
+                <span>تغيير الفرع</span>
               </button>
             </div>
             <div className="rounded-xl border border-stone-300 dark:border-slate-600/50 bg-stone-200 dark:bg-slate-800/60 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(0,0,0,0.15)]">
@@ -1156,10 +1194,10 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[100%] max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] px-3 sm:px-4 py-3 sm:py-4 flex flex-col gap-3 sm:gap-4 flex-1 min-h-0">
+      <main className="mx-auto w-full max-w-[100%] max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] px-3 sm:px-4 py-1 sm:py-2 flex flex-col gap-2 sm:gap-3 flex-1 min-h-0">
         {/* جدول الصفوف — تصميم 2026: زجاجية خفيفة، تباين ناعم، تسلسل بصري واضح */}
         <div
-          className="rounded-2xl sm:rounded-3xl overflow-x-auto overflow-hidden flex flex-col border-2 border-stone-400 dark:border-amber-500/20 bg-stone-50 dark:bg-slate-800/30 backdrop-blur-sm shadow-[0_4px_24px_rgba(0,0,0,0.08),0_0_0_1px_rgba(41,37,36,0.12)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] min-h-[280px] sm:min-h-[320px]"
+          className="rounded-2xl sm:rounded-3xl overflow-x-auto overflow-hidden flex flex-col border-2 border-stone-400 dark:border-amber-500/20 bg-stone-50 dark:bg-slate-800/30 backdrop-blur-sm shadow-[0_4px_24px_rgba(0,0,0,0.08),0_0_0_1px_rgba(41,37,36,0.12)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] min-h-[200px] sm:min-h-[240px]"
         >
           <div className="cashbox-table-scroll overflow-x-auto scrollbar-thin" style={{ scrollbarGutter: 'stable' }}>
             <table className="w-full text-xs sm:text-sm border-separate table-fixed" style={{ tableLayout: 'fixed', width: '100%', minWidth: '880px', borderSpacing: 0 }}>
@@ -1222,7 +1260,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                   <ClosureRowComp
                     key={r.id}
                     row={r}
-                    rowNumber={(currentPage - 1) * ROWS_PER_PAGE + idx + 1}
+                    rowNumber={idx + 1}
                     isFirstActive={r.id === firstActiveId}
                     liveNow={liveNow}
                     closingRowId={closingRowId}
@@ -1249,12 +1287,12 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
               </tbody>
             </table>
           </div>
-          {displayRows.length > ROWS_PER_PAGE && (
+          {(currentClosedPage > 1 || hasMoreClosedPages) && (
             <div className="px-3 sm:px-4 py-2 sm:py-3 border-t border-stone-300 dark:border-white/[0.06] flex items-center justify-center gap-2 flex-wrap rounded-b-2xl sm:rounded-b-3xl bg-stone-200 dark:bg-slate-800/50 backdrop-blur-sm">
               <button
                 type="button"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage <= 1}
+                onClick={() => goToClosedPage(currentClosedPage - 1)}
+                disabled={currentClosedPage <= 1}
                 className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-teal-200 dark:border-amber-500/25 bg-teal-50 dark:bg-amber-500/10 text-teal-700 dark:text-amber-400/95 hover:bg-teal-100 hover:border-teal-300 dark:hover:bg-amber-500/20 dark:hover:border-amber-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-stone-300 disabled:bg-stone-300 disabled:text-stone-600 dark:disabled:border-white/10 dark:disabled:bg-slate-800/60 dark:disabled:text-slate-500 transition-all"
                 aria-label="الصفحة السابقة"
               >
@@ -1263,13 +1301,27 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                 </svg>
                 السابق
               </button>
-              <span className="inline-flex items-center min-w-[4rem] justify-center px-3 py-2 rounded-xl bg-teal-100 dark:bg-amber-500/15 border border-teal-200 dark:border-amber-500/30 text-teal-700 dark:text-amber-400 text-sm font-cairo font-semibold tabular-nums shadow-sm dark:shadow-[0_0_12px_rgba(245,158,11,0.1)]">
-                {currentPage === 1 ? 'الرئيسية' : currentPage} / {totalPages}
-              </span>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.max(currentClosedPage, 1) }, (_, i) => i + 1).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => goToClosedPage(p)}
+                    className={`inline-flex items-center justify-center min-w-[2.25rem] px-2 py-2 rounded-xl text-sm font-cairo font-medium transition-all ${
+                      p === currentClosedPage
+                        ? 'bg-teal-500 dark:bg-amber-500/40 text-white border border-teal-500 dark:border-amber-500/50'
+                        : 'border border-teal-200 dark:border-amber-500/25 bg-teal-50 dark:bg-amber-500/10 text-teal-700 dark:text-amber-400/95 hover:bg-teal-100 dark:hover:bg-amber-500/20'
+                    }`}
+                    aria-label={p === 1 ? 'الرئيسية' : `صفحة ${p}`}
+                  >
+                    {p === 1 ? '١' : p}
+                  </button>
+                ))}
+              </div>
               <button
                 type="button"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage >= totalPages}
+                onClick={() => goToClosedPage(currentClosedPage + 1)}
+                disabled={!hasMoreClosedPages}
                 className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-teal-200 dark:border-amber-500/25 bg-teal-50 dark:bg-amber-500/10 text-teal-700 dark:text-amber-400/95 hover:bg-teal-100 hover:border-teal-300 dark:hover:bg-amber-500/20 dark:hover:border-amber-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-stone-300 disabled:bg-stone-300 disabled:text-stone-600 dark:disabled:border-white/10 dark:disabled:bg-slate-800/60 dark:disabled:text-slate-500 transition-all"
                 aria-label="الصفحة التالية"
               >
@@ -1289,16 +1341,16 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         </div>
 
         {/* شريط إغلاق الشفت والتراجع — تحت الجدول، فوق الحاسبتين */}
-        <div className="flex flex-col items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-teal-500 dark:border-amber-500/30 bg-gradient-to-b from-teal-50 to-stone-200 dark:from-amber-500/10 dark:to-slate-800/60 min-h-0 shadow-md dark:shadow-[0_4px_20px_rgba(245,158,11,0.12),0_0_1px_rgba(255,255,255,0.06)]">
+        <div className="flex flex-col items-center justify-center gap-1.5 py-2 px-3 rounded-xl border-2 border-teal-500 dark:border-amber-500/30 bg-gradient-to-b from-teal-50 to-stone-200 dark:from-amber-500/10 dark:to-slate-800/60 min-h-0 shadow-md dark:shadow-[0_4px_20px_rgba(245,158,11,0.12),0_0_1px_rgba(255,255,255,0.06)]">
           {closingRowId ? (
             <div className="flex flex-wrap items-center justify-center w-full" dir="ltr">
               {closingSecondsLeft > 0 ? (
                 <button
                   type="button"
                   onClick={handleUndoClose}
-                  className="btn-close-shift inline-flex items-center justify-center gap-2 sm:gap-3 px-4 sm:px-7 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl text-sm sm:text-base font-cairo font-bold whitespace-nowrap border-2 border-teal-400 bg-teal-500 hover:bg-teal-600 text-white shadow-md dark:border-emerald-500/60 dark:bg-gradient-to-b dark:from-emerald-500/30 dark:to-emerald-600/20 dark:text-emerald-50 dark:shadow-[0_4px_24px_rgba(16,185,129,0.25)] dark:hover:from-emerald-500/40 dark:hover:to-emerald-600/30 dark:hover:shadow-[0_6px_28px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all select-none touch-manipulation min-h-[44px]"
+                  className="btn-close-shift inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-cairo font-bold whitespace-nowrap border-2 border-teal-400 bg-teal-500 hover:bg-teal-600 text-white shadow-md dark:border-emerald-500/60 dark:bg-gradient-to-b dark:from-emerald-500/30 dark:to-emerald-600/20 dark:text-emerald-50 dark:shadow-[0_4px_24px_rgba(16,185,129,0.25)] dark:hover:from-emerald-500/40 dark:hover:to-emerald-600/30 dark:hover:shadow-[0_6px_28px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all select-none touch-manipulation min-h-[36px]"
                 >
-                  <svg className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M3 10h10a5 5 0 015 5v2" />
                     <path d="M7 15l-4-4 4-4" />
                   </svg>
@@ -1314,14 +1366,14 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
               type="button"
               onClick={() => handleCloseShift(firstActiveId)}
               disabled={!canCloseShift}
-              className={`btn-close-shift inline-flex items-center justify-center gap-2 sm:gap-3 px-4 sm:px-8 py-2.5 sm:py-3.5 w-full sm:w-auto sm:min-w-[280px] rounded-xl sm:rounded-2xl text-sm sm:text-base font-cairo font-bold whitespace-nowrap border-2 select-none transition-all touch-manipulation min-h-[44px]
+              className={`btn-close-shift inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 w-full sm:w-auto sm:min-w-[180px] rounded-xl text-xs sm:text-sm font-cairo font-bold whitespace-nowrap border-2 select-none transition-all touch-manipulation min-h-[36px]
                 ${canCloseShift
                   ? 'bg-teal-500 hover:bg-teal-600 text-white border-teal-400 shadow-md dark:bg-gradient-to-b dark:from-amber-500/50 dark:to-amber-600/40 dark:text-amber-50 dark:border-amber-400 dark:shadow-[0_4px_24px_rgba(245,158,11,0.3)] dark:hover:from-amber-500/60 dark:hover:to-amber-600/50 dark:hover:shadow-[0_6px_28px_rgba(245,158,11,0.35)] hover:scale-[1.02] active:scale-[0.98]'
                   : 'opacity-60 bg-stone-200 text-stone-500 border-stone-300 dark:opacity-50 dark:bg-slate-800/40 dark:text-slate-500 dark:border-slate-600/50 cursor-not-allowed'
                 }`}
               title={canCloseShift ? 'إغلاق الشفت وحفظ التقفيلة' : 'أدخل رصيد البرنامج كاش وإجمالي الموازنة (البنك) أولاً'}
             >
-              <svg className={`btn-close-shift-icon w-6 h-6 shrink-0 ${canCloseShift ? 'text-white dark:text-amber-200' : 'text-stone-500 dark:text-slate-500'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <svg className={`btn-close-shift-icon w-5 h-5 shrink-0 ${canCloseShift ? 'text-white dark:text-amber-200' : 'text-stone-500 dark:text-slate-500'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                 <path d="M7 11V7a5 5 0 0110 0v4" />
               </svg>
@@ -1333,7 +1385,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
         </div>
 
         {/* الحاسبات — تُصفَّر عند انتهاء مهلة الإغلاق للتجهيز لشفت جديد */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(260px,320px)_1fr_1fr] gap-3 sm:gap-4 w-full max-w-[100%] max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] items-stretch min-h-[320px] sm:min-h-[380px] xl:min-h-[420px] [&>div]:min-h-[280px] sm:[&>div]:min-h-[340px] xl:[&>div]:min-h-[380px]">
+        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(260px,320px)_1fr_1fr] gap-2 sm:gap-3 w-full max-w-[100%] max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] items-stretch min-h-[280px] sm:min-h-[340px] xl:min-h-[380px] [&>div]:min-h-[240px] sm:[&>div]:min-h-[300px] xl:[&>div]:min-h-[340px]">
           <div className="min-h-0 flex flex-col">
             <Calculator key={`calculator-${calculatorsResetKey}`} onTransfer={handleTransferFromCalculator} hasActiveRow={!!firstActiveId} />
           </div>
@@ -1972,17 +2024,22 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
             ) : (
               <>
                 <p className="text-stone-600 dark:text-slate-300 text-sm leading-relaxed mb-3">ادخل كود الأدمن</p>
+                {adminCodeError && (
+                  <p className="mb-3 px-3 py-2 rounded-xl bg-red-100 dark:bg-red-500/20 border border-red-300 dark:border-red-500/30 text-red-700 dark:text-red-300 text-sm font-cairo font-semibold" role="alert">
+                    كود الأدمن غير صحيح — أدخل الكود الصحيح وأعد المحاولة
+                  </p>
+                )}
                 <div className="relative mb-4">
                   <input
                     type={showAdminCode ? 'text' : 'password'}
                     value={adminCodeInput}
-                    onChange={(e) => setAdminCodeInput(e.target.value)}
+                    onChange={(e) => { setAdminCodeInput(e.target.value); setAdminCodeError(false) }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') submitDeleteCarriedWithCode()
-                      if (e.key === 'Escape') { setDeleteCarriedConfirm(null); setAdminCodeInput('') }
+                      if (e.key === 'Escape') { setDeleteCarriedConfirm(null); setAdminCodeInput(''); setAdminCodeError(false) }
                     }}
                     placeholder="كود الأدمن"
-                    className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-sm font-cairo focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/25"
+                    className={`w-full pl-3 pr-10 py-2 rounded-xl bg-slate-900 border text-white text-sm font-cairo focus:ring-1 focus:ring-amber-500/25 ${adminCodeError ? 'border-red-500 dark:border-red-400' : 'border-white/10 focus:border-amber-500/50'}`}
                     autoFocus
                   />
                   <button
@@ -2000,7 +2057,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                 </div>
                 <div className="flex gap-3">
                   <button type="button" onClick={submitDeleteCarriedWithCode} className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition">تأكيد</button>
-                  <button type="button" onClick={() => { setDeleteCarriedConfirm(null); setAdminCodeInput(''); setShowAdminCode(false) }} className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition">إلغاء</button>
+                  <button type="button" onClick={() => { setDeleteCarriedConfirm(null); setAdminCodeInput(''); setShowAdminCode(false); setAdminCodeError(false) }} className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition">إلغاء</button>
                 </div>
               </>
             )}
@@ -2037,17 +2094,22 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
             ) : (
               <>
                 <p className="text-stone-600 dark:text-slate-300 text-sm leading-relaxed mb-3">ادخل كود الأدمن</p>
+                {adminCodeError && (
+                  <p className="mb-3 px-3 py-2 rounded-xl bg-red-100 dark:bg-red-500/20 border border-red-300 dark:border-red-500/30 text-red-700 dark:text-red-300 text-sm font-cairo font-semibold" role="alert">
+                    كود الأدمن غير صحيح — أدخل الكود الصحيح وأعد المحاولة
+                  </p>
+                )}
                 <div className="relative mb-4">
                   <input
                     type={showAdminCode ? 'text' : 'password'}
                     value={adminCodeInput}
-                    onChange={(e) => setAdminCodeInput(e.target.value)}
+                    onChange={(e) => { setAdminCodeInput(e.target.value); setAdminCodeError(false) }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') submitDeleteWithCode()
-                      if (e.key === 'Escape') setDeleteConfirm(null)
+                      if (e.key === 'Escape') { setDeleteConfirm(null); setAdminCodeInput(''); setAdminCodeError(false) }
                     }}
                     placeholder="كود الأدمن"
-                    className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-sm font-cairo focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/25"
+                    className={`w-full pl-3 pr-10 py-2 rounded-xl bg-slate-900 border text-white text-sm font-cairo focus:ring-1 focus:ring-amber-500/25 ${adminCodeError ? 'border-red-500 dark:border-red-400' : 'border-white/10 focus:border-amber-500/50'}`}
                     autoFocus
                   />
                   <button
@@ -2080,7 +2142,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setDeleteConfirm(null); setAdminCodeInput(''); setShowAdminCode(false) }}
+                    onClick={() => { setDeleteConfirm(null); setAdminCodeInput(''); setShowAdminCode(false); setAdminCodeError(false) }}
                     className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
                   >
                     إلغاء
@@ -2121,17 +2183,22 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
             ) : (
               <>
                 <p className="text-stone-600 dark:text-slate-300 text-sm leading-relaxed mb-3">ادخل كود الأدمن</p>
+                {adminCodeError && (
+                  <p className="mb-3 px-3 py-2 rounded-xl bg-red-100 dark:bg-red-500/20 border border-red-300 dark:border-red-500/30 text-red-700 dark:text-red-300 text-sm font-cairo font-semibold" role="alert">
+                    كود الأدمن غير صحيح — أدخل الكود الصحيح وأعد المحاولة
+                  </p>
+                )}
                 <div className="relative mb-4">
                   <input
                     type={showAdminCode ? 'text' : 'password'}
                     value={adminCodeInput}
-                    onChange={(e) => setAdminCodeInput(e.target.value)}
+                    onChange={(e) => { setAdminCodeInput(e.target.value); setAdminCodeError(false) }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') submitDeleteAllClosedWithCode()
-                      if (e.key === 'Escape') setDeleteAllClosedConfirm(null)
+                      if (e.key === 'Escape') { setDeleteAllClosedConfirm(null); setAdminCodeInput(''); setAdminCodeError(false) }
                     }}
                     placeholder="كود الأدمن"
-                    className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-sm font-cairo focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/25"
+                    className={`w-full pl-3 pr-10 py-2 rounded-xl bg-slate-900 border text-white text-sm font-cairo focus:ring-1 focus:ring-amber-500/25 ${adminCodeError ? 'border-red-500 dark:border-red-400' : 'border-white/10 focus:border-amber-500/50'}`}
                     autoFocus
                   />
                   <button
@@ -2164,7 +2231,7 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setDeleteAllClosedConfirm(null); setAdminCodeInput(''); setShowAdminCode(false) }}
+                    onClick={() => { setDeleteAllClosedConfirm(null); setAdminCodeInput(''); setShowAdminCode(false); setAdminCodeError(false) }}
                     className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
                   >
                     إلغاء
@@ -2172,6 +2239,38 @@ export function CashBox({ name, onExit, theme, onToggleTheme: _onToggleTheme }: 
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {switchBranchConfirm && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="switch-branch-dialog-title">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <h2 id="switch-branch-dialog-title" className="text-lg font-bold text-teal-700 dark:text-amber-400 mb-3">
+              تغيير الفرع
+            </h2>
+            <p className="text-stone-600 dark:text-slate-300 text-sm leading-relaxed mb-4">
+              هل تريد الانتقال إلى فرع {BRANCH_LABELS[switchBranchConfirm]}؟
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  onSwitchBranch(switchBranchConfirm)
+                  setSwitchBranchConfirm(null)
+                }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-teal-600 hover:bg-teal-500 text-white transition"
+              >
+                نعم، الانتقال
+              </button>
+              <button
+                type="button"
+                onClick={() => setSwitchBranchConfirm(null)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-slate-600 hover:bg-slate-500 text-slate-200 transition"
+              >
+                إلغاء
+              </button>
+            </div>
           </div>
         </div>
       )}

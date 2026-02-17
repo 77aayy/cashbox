@@ -1,4 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { getActiveRows, addRow, getRowById, updateRow, deleteRow } from './storage'
+
+vi.mock('./firebaseClosedRows', () => ({
+  addClosedRowToFirebase: vi.fn(() => Promise.resolve()),
+  deleteClosedRowFromFirebase: vi.fn(() => Promise.resolve()),
+}))
 
 const store: Record<string, string> = {}
 const fakeLocalStorage = {
@@ -22,34 +28,22 @@ const fakeLocalStorage = {
   },
 }
 
-describe('storage', () => {
+describe('storage (active rows only)', () => {
+  const BRANCH = 'corniche' as const
+
   beforeEach(() => {
     vi.stubGlobal('localStorage', fakeLocalStorage)
-    store['cashbox_rows'] = undefined as unknown as string
-    delete store['cashbox_rows']
+    delete store['cashbox_rows_corniche']
+    delete store['cashbox_rows_andalusia']
   })
 
-  beforeEach(async () => {
-    const { getRows, addRow, closeRow, deleteRow, deleteAllClosedRows, getRowById, updateRow, getClosedForPrint } = await import('./storage')
-    ;(globalThis as unknown as { __storage: typeof import('./storage') }).__storage = {
-      getRows,
-      addRow,
-      closeRow,
-      deleteRow,
-      deleteAllClosedRows,
-      getRowById,
-      updateRow,
-      getClosedForPrint,
-    }
+  it('getActiveRows returns empty array when no data', () => {
+    expect(getActiveRows(BRANCH)).toEqual([])
   })
 
-  it('getRows returns empty array when no data', () => {
-    expect(getRows()).toEqual([])
-  })
-
-  it('addRow adds a row and getRows returns it', () => {
-    addRow('أحمد')
-    const rows = getRows()
+  it('addRow adds a row and getActiveRows returns it', () => {
+    addRow(BRANCH, 'أحمد')
+    const rows = getActiveRows(BRANCH)
     expect(rows.length).toBe(1)
     expect(rows[0]!.employeeName).toBe('أحمد')
     expect(rows[0]!.status).toBe('active')
@@ -57,62 +51,29 @@ describe('storage', () => {
   })
 
   it('getRowById returns row by id', () => {
-    addRow('محمد')
-    const rows = getRows()
+    addRow(BRANCH, 'محمد')
+    const rows = getActiveRows(BRANCH)
     const id = rows[0]!.id
-    expect(getRowById(id)?.employeeName).toBe('محمد')
-    expect(getRowById('invalid')).toBeNull()
+    expect(getRowById(BRANCH, id)?.employeeName).toBe('محمد')
+    expect(getRowById(BRANCH, 'invalid')).toBeNull()
   })
 
   it('updateRow patches row', () => {
-    addRow('خالد')
-    const rows = getRows()
+    addRow(BRANCH, 'خالد')
+    const rows = getActiveRows(BRANCH)
     const id = rows[0]!.id
-    updateRow(id, { cash: 100, notes: 'ملاحظة' })
-    const updated = getRowById(id)
+    updateRow(BRANCH, id, { cash: 100, notes: 'ملاحظة' })
+    const updated = getRowById(BRANCH, id)
     expect(updated!.cash).toBe(100)
     expect(updated!.notes).toBe('ملاحظة')
   })
 
-  it('closeRow marks row as closed', () => {
-    addRow('سارة')
-    const rows = getRows()
-    const row = rows[0]!
-    closeRow(row.id, { ...row, cash: 50 })
-    const closed = getRowById(row.id)
-    expect(closed!.status).toBe('closed')
-    expect(closed!.closedAt).toBeTruthy()
-  })
-
-  it('deleteRow removes row', () => {
-    addRow('علي')
-    const rows = getRows()
+  it('deleteRow removes active row', async () => {
+    addRow(BRANCH, 'علي')
+    const rows = getActiveRows(BRANCH)
     const id = rows[0]!.id
-    deleteRow(id)
-    expect(getRows().length).toBe(0)
-    expect(getRowById(id)).toBeNull()
-  })
-
-  it('deleteAllClosedRows keeps only active', () => {
-    addRow('أ')
-    const rows = getRows()
-    const row = rows[0]!
-    closeRow(row.id, { ...row, cash: 0 })
-    addRow('ب')
-    expect(getRows().length).toBe(2)
-    deleteAllClosedRows()
-    expect(getRows().length).toBe(1)
-    expect(getRows()[0]!.employeeName).toBe('ب')
-  })
-
-  it('getClosedForPrint returns closed rows limited', () => {
-    addRow('ص1')
-    const r1 = getRows()[0]!
-    closeRow(r1.id, { ...r1, cash: 0 })
-    addRow('ص2')
-    const r2 = getRows()[0]!
-    closeRow(r2.id, { ...r2, cash: 0 })
-    const closed = getClosedForPrint(1)
-    expect(closed.length).toBe(1)
+    await deleteRow(BRANCH, id, false)
+    expect(getActiveRows(BRANCH).length).toBe(0)
+    expect(getRowById(BRANCH, id)).toBeNull()
   })
 })
