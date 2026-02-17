@@ -1,13 +1,21 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
   <head>
+    <script>
+      (function() {
+        var t = localStorage.getItem('cashbox_theme');
+        var isDark = t === 'dark' || (t !== 'light' && true);
+        document.documentElement.classList.toggle('dark', isDark);
+        document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+      })();
+    </script>
     <meta charset="UTF-8" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>صندوق التقفيل</title>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="/cashbox/assets/index-Bjs-Hndy.js"></script>
-    <link rel="stylesheet" crossorigin href="/cashbox/assets/index-C-x83ILR.css">
+    <script type="module" crossorigin src="/cashbox/assets/index-D369jauE.js"></script>
+    <link rel="stylesheet" crossorigin href="/cashbox/assets/index-CoFlRYLG.css">
   </head>
   <body>
     <div id="root"></div>
