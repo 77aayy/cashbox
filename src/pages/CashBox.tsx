@@ -1099,6 +1099,21 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
               <button
                 type="button"
                 onClick={onExit}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-red-600 hover:text-red-700 hover:bg-red-500/15 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-500/10 text-xs font-cairo font-semibold transition border border-red-200 dark:border-red-500/30"
+                title="خروج — العودة لتسجيل الاسم والفرع"
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                <span>خروج</span>
+              </button>
+            </div>
+            <div className="rounded-xl border border-stone-300 dark:border-slate-600/50 bg-stone-200 dark:bg-slate-800/60 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(0,0,0,0.15)]">
+              <button
+                type="button"
+                onClick={onExit}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-stone-800 hover:text-teal-600 hover:bg-teal-500/15 dark:text-slate-400 dark:hover:text-amber-400 dark:hover:bg-amber-500/10 text-xs font-cairo transition"
                 title="تغيير المستخدم"
               >
