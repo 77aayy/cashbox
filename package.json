@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist --dotfiles"
+    "deploy": "gh-pages -d dist --dotfiles",
+    "test:e2e": "playwright test",
+    "test:e2e:branch": "playwright test e2e/branch-firebase-flow.spec.ts"
   },
   "dependencies": {
     "firebase": "^12.9.0",
