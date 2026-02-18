@@ -156,7 +156,7 @@ export function BankOperationsCalculator({ onTransfer, onTransferToBudget, hasAc
 
   return (
     <div className="w-full h-full min-h-0 flex flex-col rounded-2xl overflow-hidden border-2 border-stone-400 dark:border-teal-500/25 page-surface-warm-card dark:bg-slate-800/50 shadow-[0_4px_20px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm">
-      <div className="bg-stone-200 dark:bg-slate-800 dark:border-slate-600 px-4 py-3 border-b-2 border-stone-400 dark:border-slate-600 flex items-center justify-between gap-2 shrink-0 shadow-sm">
+      <div className="bg-stone-200 dark:bg-slate-800 dark:border-slate-600 px-4 py-2 border-b-2 border-stone-400 dark:border-slate-600 flex items-center justify-between gap-2 shrink-0 shadow-sm">
         <h3 className="flex items-center gap-2.5 text-base font-semibold text-stone-900 dark:text-slate-200 font-cairo tracking-wide">
           <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-stone-300 dark:bg-slate-600 text-stone-800 dark:text-slate-200">
             <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

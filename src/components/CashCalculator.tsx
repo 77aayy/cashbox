@@ -1,9 +1,10 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { CASH_DENOMINATIONS } from '../lib/denominations'
 import { toLatinDigits } from '../lib/utils'
 import type { TransferFlyRect } from './TransferFlyAnimation'
 
-const DENOMS = [500, 200, 100, 50, 10, 5, 1]
+const DENOMS = [...CASH_DENOMINATIONS]
 
 interface CashCalculatorProps {
   onApplyToCash: (total: number, sourceRect?: TransferFlyRect) => void
@@ -63,7 +64,7 @@ export function CashCalculator({ onApplyToCash, hasActiveRow }: CashCalculatorPr
   return (
     <div className="w-full h-full min-h-0 flex flex-col rounded-2xl overflow-hidden border-2 border-stone-400 dark:border-teal-500/25 page-surface-warm-card dark:bg-slate-800/50 shadow-[0_4px_20px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm">
       {/* هيدر — محايد في الوضع الفاتح */}
-      <div className="relative bg-stone-200 dark:bg-slate-800 dark:border-slate-600 px-3 sm:px-4 py-2 sm:py-3 border-b-2 border-stone-400 dark:border-slate-600 flex items-center justify-between gap-2 shrink-0 shadow-sm">
+      <div className="relative bg-stone-200 dark:bg-slate-800 dark:border-slate-600 px-3 sm:px-4 py-1.5 sm:py-2 border-b-2 border-stone-400 dark:border-slate-600 flex items-center justify-between gap-2 shrink-0 shadow-sm">
         <div className="flex items-center gap-2 min-w-0">
           <h3 className="flex items-center gap-2 sm:gap-2.5 text-sm sm:text-base font-semibold text-stone-900 dark:text-slate-200 font-cairo tracking-wide min-w-0">
             <span className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-stone-300 dark:bg-slate-600 text-stone-800 dark:text-slate-200 shrink-0">

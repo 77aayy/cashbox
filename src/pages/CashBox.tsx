@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom'
 import { getRowById, addRow, updateRow, closeRow, deleteRow, deleteAllClosedRows, type Branch } from '../lib/storage'
 import { getClosedRowsFromFirebase } from '../lib/firebaseClosedRows'
 import { parseBankTransactionsExcel, type ExcelDetails } from '../lib/excelParser'
+import { CASH_DENOMINATIONS } from '../lib/denominations'
 import { computeBankVariance, computeCashVariance, computeVariance, formatCurrency, formatDateTime, filterByPreset, getGreeting, toLatinDigits } from '../lib/utils'
 import { ClosureRowComp } from '../components/ClosureRow'
 import { Calculator, type TransferField } from '../components/Calculator'
@@ -115,6 +116,10 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
   const [showEmployeeNamesModal, setShowEmployeeNamesModal] = useState(false)
   /** نافذة شرح سبب انحراف الكاش أو البنك (نوع + الصف) */
   const [varianceExplanationModal, setVarianceExplanationModal] = useState<{ type: 'cash' | 'bank'; row: ClosureRow } | null>(null)
+  /** نافذة ملاحظات الشيفت: كتابة (قبل الإغلاق) أو عرض فقط (بعد الإغلاق) */
+  const [shiftNotesModal, setShiftNotesModal] = useState<{ row: ClosureRow; mode: 'edit' | 'view' } | null>(null)
+  /** مسودة نص ملاحظات الشيفت أثناء التحرير */
+  const [shiftNotesDraft, setShiftNotesDraft] = useState('')
   /** تأكيد إفراغ الصف: عرض نعم/لا قبل الإفراغ */
   const [clearRowConfirmId, setClearRowConfirmId] = useState<string | null>(null)
   /** تأكيد التعديل اليدوي لخانة تستقبل بيانات من الإكسل (مدى/فيزا/ماستر/تحويل بنكي) */
@@ -132,6 +137,10 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
     btn.addEventListener('click', handler, true)
     return () => btn.removeEventListener('click', handler, true)
   }, [])
+
+  useEffect(() => {
+    if (shiftNotesModal?.mode === 'edit') setShiftNotesDraft(shiftNotesModal.row.notes ?? '')
+  }, [shiftNotesModal?.row.id, shiftNotesModal?.mode])
 
   const {
     expenseModal,
@@ -568,6 +577,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
       }
       const { firstActiveId: optsFirstActiveId, currentUserName, branchLabel } = opts ?? {}
       const branchLabelHtml = branchLabel ? `<p class="page-branch">فرع ${branchLabel.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p>` : ''
+      const denomsPrintRef = CASH_DENOMINATIONS.join('، ')
       const pagesHtml = list
         .map((r, idx) => {
           const rawName = r.status === 'closed' ? r.employeeName : (optsFirstActiveId && r.id === optsFirstActiveId && currentUserName ? currentUserName : r.employeeName)
@@ -588,7 +598,8 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                   <div class="block-body">${items.map((it) => `<div class="expense-item">${formatCurrency(it.amount)} — ${(it.description || '—').replace(/</g, '&lt;')}</div>`).join('')}</div>
                 </div>`
               : ''
-          const notesHtml = (r.notes || '').trim() ? `<div class="block notes-block"><div class="block-title">ملاحظات</div><div class="block-body">${(r.notes || '').replace(/</g, '&lt;')}</div></div>` : ''
+          const hasShiftNotes = (r.notes || '').trim().length > 0
+          const notesHtml = `<div class="block notes-block"><div class="block-title">ملاحظات الشيفت</div><div class="block-body">${hasShiftNotes ? (r.notes || '').replace(/</g, '&lt;').replace(/\n/g, '<br>') : '— لا توجد —'}</div></div>`
           const pageBreakStyle = (idx > 0 ? 'page-break-before: always;' : '') + (idx < list.length - 1 ? 'page-break-after: always;' : '')
           return `
             <div class="page" ${pageBreakStyle ? `style="${pageBreakStyle}"` : ''}>
@@ -628,7 +639,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
               ${notesHtml}
               </div>
               <footer class="page-footer">
-                <p class="footer-formulas">بنك نزيل = مدى + فيزا + ماستر كارد (تحويل بنكي للعرض فقط) — انحراف البنك = بنك نزيل − اجمالى الموازنه — انحراف الكاش = (كاش + مرسل للخزنة + مصروفات فعّالة) − رصيد البرنامج كاش</p>
+                <p class="footer-formulas">فئات الكاش (ريال): ${denomsPrintRef}. — بنك نزيل = مدى + فيزا + ماستر كارد (تحويل بنكي للعرض فقط) — انحراف البنك = بنك نزيل − اجمالى الموازنه — انحراف الكاش = (كاش + مرسل للخزنة + مصروفات فعّالة) − رصيد البرنامج كاش</p>
                 <p>${branchLabel ? `فرع ${branchLabel} — ` : ''}تاريخ الطباعة: ${formatDateTime(new Date())} ${list.length > 1 ? ` — تقفيلة ${idx + 1} من ${list.length}` : ''}</p>
               </footer>
             </div>`
@@ -1347,6 +1358,21 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
         <div
           className="rounded-2xl sm:rounded-3xl flex flex-col border-2 border-stone-400 dark:border-teal-500/25 page-surface-warm-card dark:bg-slate-800/30 backdrop-blur-sm shadow-[0_4px_20px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] min-h-[200px] sm:min-h-[240px] min-w-0 overflow-hidden"
         >
+          <div className="px-3 sm:px-4 py-1 sm:py-1.5 border-b border-stone-300 dark:border-slate-600 flex items-center justify-end gap-2 shrink-0 rounded-t-2xl sm:rounded-t-3xl bg-stone-50/80 dark:bg-slate-800/50">
+            <span className="text-[9px] sm:text-[10px] font-cairo text-stone-600 dark:text-slate-400 tabular-nums">
+              {(() => {
+                const activeCount = visibleRows.filter((r) => r.status !== 'closed').length
+                const closedCount = visibleRows.filter((r) => r.status === 'closed').length
+                return (
+                  <>
+                    {activeCount > 0 && <span>صف نشط: {activeCount}</span>}
+                    {activeCount > 0 && closedCount > 0 && <span className="text-stone-400 dark:text-slate-500">·</span>}
+                    <span>تقفيلات مغلقة: {closedCount}</span>
+                  </>
+                )
+              })()}
+            </span>
+          </div>
           <div className="cashbox-table-scroll min-w-0 w-full overflow-x-auto overflow-y-hidden rounded-t-2xl sm:rounded-t-3xl scrollbar-thin" style={{ scrollbarGutter: 'stable' }}>
             <table className="text-xs sm:text-sm border-separate w-full min-w-[1380px]" style={{ tableLayout: 'fixed', width: '100%', borderSpacing: 0 }}>
               <colgroup>
@@ -1433,6 +1459,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                     currentUserName={name}
                     onClearRow={(id) => setClearRowConfirmId(id)}
                     isStickyRows={false}
+                    onOpenShiftNotesModal={(row, mode) => setShiftNotesModal({ row, mode })}
                   />
                 ))}
               </tbody>
@@ -1536,7 +1563,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
         </div>
 
         {/* الحاسبات — تُصفَّر عند انتهاء مهلة الإغلاق للتجهيز لشفت جديد */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(260px,320px)_1fr_1fr] gap-2 sm:gap-3 w-full max-w-[100%] max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] items-stretch min-h-[180px] sm:min-h-[218px] xl:min-h-[244px] [&>div]:min-h-[154px] sm:[&>div]:min-h-[192px] xl:[&>div]:min-h-[218px]">
+        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(260px,320px)_1fr_1fr] gap-2 sm:gap-3 w-full max-w-[100%] max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] items-stretch min-h-[101px] sm:min-h-[122px] xl:min-h-[137px] [&>div]:min-h-[86px] sm:[&>div]:min-h-[107px] xl:[&>div]:min-h-[122px]">
           <div className="min-h-0 flex flex-col">
             <Calculator key={`calculator-${calculatorsResetKey}`} onTransfer={handleTransferFromCalculator} hasActiveRow={!!firstActiveId} />
           </div>
@@ -1777,6 +1804,58 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                 >
                   إغلاق
                 </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {shiftNotesModal && (() => {
+        const { row: modalRow, mode } = shiftNotesModal
+        const isEdit = mode === 'edit'
+        const handleSaveNotes = () => {
+          updateRow(branch, modalRow.id, { notes: shiftNotesDraft })
+          setRows((prev) => prev.map((r) => (r.id === modalRow.id ? { ...r, notes: shiftNotesDraft } : r)))
+          setShiftNotesModal(null)
+          setToast({ msg: 'تم حفظ ملاحظات الشيفت', type: 'success' })
+        }
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="shift-notes-title" onClick={() => setShiftNotesModal(null)}>
+            <div className="rounded-2xl border-2 border-stone-300 dark:border-teal-500/30 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-[95vw] sm:max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+              <h2 id="shift-notes-title" className="text-base font-bold text-stone-900 dark:text-teal-400 p-4 pb-2 border-b-2 border-stone-400 dark:border-white/10">
+                ملاحظات الشيفت
+              </h2>
+              <div className="flex-1 min-h-0 overflow-hidden p-4">
+                {isEdit ? (
+                  <textarea
+                    dir="auto"
+                    value={shiftNotesDraft}
+                    onChange={(e) => setShiftNotesDraft(e.target.value)}
+                    placeholder="اكتب ملاحظاتك قبل إغلاق الشيفت..."
+                    className="w-full h-40 sm:h-48 px-3 py-2 rounded-xl border-2 border-stone-400 dark:border-white/10 bg-white dark:bg-slate-900/70 text-stone-900 dark:text-slate-200 text-sm font-cairo placeholder:text-stone-500 dark:placeholder:text-slate-500 focus:border-teal-500/50 focus:ring-2 focus:ring-teal-500/20 focus:outline-none resize-none"
+                    autoFocus
+                  />
+                ) : (
+                  <div className="text-sm text-stone-800 dark:text-slate-300 font-cairo whitespace-pre-wrap break-words max-h-48 overflow-y-auto py-2">
+                    {(modalRow.notes || '').trim() || '— لا توجد ملاحظات —'}
+                  </div>
+                )}
+              </div>
+              <div className="p-3 border-t-2 border-stone-400 dark:border-white/10 flex gap-2">
+                {isEdit ? (
+                  <>
+                    <button type="button" onClick={handleSaveNotes} className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-teal-600 hover:bg-teal-500 text-white transition">
+                      حفظ
+                    </button>
+                    <button type="button" onClick={() => setShiftNotesModal(null)} className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-stone-400 hover:bg-stone-500 text-stone-800 transition">
+                      إلغاء
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" onClick={() => setShiftNotesModal(null)} className="w-full py-2.5 rounded-xl text-sm font-bold bg-teal-600 hover:bg-teal-500 text-white transition">
+                    إغلاق
+                  </button>
+                )}
               </div>
             </div>
           </div>

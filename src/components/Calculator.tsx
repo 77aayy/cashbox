@@ -240,7 +240,7 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
       tabIndex={0}
       title="انقر هنا ثم استخدم لوحة المفاتيح. النتيجة لا تتغير عند الكتابة في الجدول."
     >
-      <div className="bg-stone-200 dark:bg-slate-800 dark:border-slate-600 px-3 sm:px-4 py-2 sm:py-3 border-b-2 border-stone-400 dark:border-slate-600 flex items-center justify-between gap-2 shadow-sm">
+      <div className="bg-stone-200 dark:bg-slate-800 dark:border-slate-600 px-3 sm:px-4 py-1.5 sm:py-2 border-b-2 border-stone-400 dark:border-slate-600 flex items-center justify-between gap-2 shadow-sm">
         <h3 className="flex items-center gap-2 sm:gap-2.5 text-sm sm:text-base font-semibold text-stone-900 dark:text-slate-200 font-cairo tracking-wide min-w-0">
           <span className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-stone-300 dark:bg-slate-600 text-stone-800 dark:text-slate-200 shrink-0">
             <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -270,13 +270,13 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
           </svg>
         </button>
       </div>
-      <div className="flex-1 flex flex-col p-3 sm:p-4 space-y-2 sm:space-y-3 min-h-0">
-        <div className="rounded-xl bg-stone-100 dark:bg-slate-900/80 border-2 border-stone-400 dark:border-slate-600 p-2 shadow-inner dark:ring-0">
-          <div className="text-right text-stone-700 text-xs min-h-[16px] font-cairo tabular-nums select-none" aria-hidden="true">
+      <div className="flex-1 flex flex-col p-3 sm:p-4 gap-2 sm:gap-3 min-h-0 overflow-hidden">
+        <div className="shrink-0 rounded-xl bg-stone-100 dark:bg-slate-900/80 border-2 border-stone-400 dark:border-slate-600 p-2 shadow-inner dark:ring-0">
+          <div className="text-right text-stone-700 text-xs min-h-[14px] font-cairo tabular-nums select-none" aria-hidden="true">
             {expression || '\u200b'}
           </div>
           <div
-            className="w-full px-3 py-2.5 rounded-lg bg-stone-50 dark:bg-slate-900/50 border-2 border-stone-300 dark:border-transparent text-stone-900 dark:text-white text-right font-cairo text-2xl font-semibold tabular-nums min-h-[2.5rem] flex items-center justify-end"
+            className="w-full px-3 py-2 rounded-lg bg-stone-50 dark:bg-slate-900/50 border-2 border-stone-300 dark:border-transparent text-stone-900 dark:text-white text-right font-cairo text-xl sm:text-2xl font-semibold tabular-nums min-h-[2.25rem] flex items-center justify-end"
             aria-live="polite"
             aria-label={`النتيجة: ${display}`}
           >
@@ -302,19 +302,19 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
             }}
             disabled={!hasActiveRow || !(parseFloat(display) || 0)}
             title={`ترحيل الرقم إلى ${CALCULATOR_TRANSFER_LABEL}`}
-            className="w-full py-2 rounded-xl text-sm font-cairo font-medium bg-teal-500 hover:bg-teal-600 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-white dark:text-emerald-400 border-2 border-teal-400 dark:border-emerald-500/40 disabled:opacity-50 disabled:pointer-events-none transition flex items-center justify-center gap-2 shadow-sm"
+            className="shrink-0 w-full py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-cairo font-medium bg-teal-500 hover:bg-teal-600 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-white dark:text-emerald-400 border-2 border-teal-400 dark:border-emerald-500/40 disabled:opacity-50 disabled:pointer-events-none transition flex items-center justify-center gap-2 shadow-sm"
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
             ترحيل إلى {CALCULATOR_TRANSFER_LABEL}
           </button>
         )}
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-4 grid-rows-5 gap-1.5 sm:gap-2 min-h-0 flex-1">
           {keys.flat().map((k) => (
             <button
               key={k}
               type="button"
               onClick={() => handleKey(k)}
-              className={`py-2.5 rounded-xl font-cairo transition-all duration-150 ${btnClass(k)}`}
+              className={`min-h-0 rounded-lg sm:rounded-xl font-cairo transition-all duration-150 flex items-center justify-center ${btnClass(k)}`}
               aria-label={k === '⌫' ? 'حذف' : k}
             >
               {renderKeyContent(k)}

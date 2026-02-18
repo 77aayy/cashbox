@@ -41,6 +41,8 @@ interface ClosureRowProps {
   onClearRow?: (id: string) => void
   /** جعل صفّي التسمية والبيانات ثابتين عند التمرير (مثل الترويسة) */
   isStickyRows?: boolean
+  /** فتح نافذة ملاحظات الشيفت (كتابة للصف النشط أو عرض فقط) */
+  onOpenShiftNotesModal?: (row: Row, mode: 'edit' | 'view') => void
 }
 
 const NUM_KEYS: (keyof Row)[] = ['cash', 'sentToTreasury', 'expenseCompensation', 'expenses', 'programBalanceCash', 'mada', 'visa', 'mastercard', 'bankTransfer', 'programBalanceBank']
@@ -76,6 +78,7 @@ export function ClosureRowComp({
   currentUserName,
   onClearRow,
   isStickyRows = false,
+  onOpenShiftNotesModal,
 }: ClosureRowProps) {
   const displayName = isFirstActive && currentUserName ? currentUserName : row.employeeName
   const bankVariance = useMemo(() => computeBankVariance(row), [
@@ -176,7 +179,7 @@ export function ClosureRowComp({
           <button
             type="button"
             onClick={() => onOpenExpenseDetails(row.id)}
-            className="block w-full py-1.5 text-sm text-stone-800 dark:text-slate-300 font-cairo text-center hover:text-stone-900 hover:bg-stone-200 dark:hover:text-teal-400 dark:hover:bg-white/[0.06] rounded-xl transition cursor-pointer"
+            className="block w-full py-1 text-sm text-stone-800 dark:text-slate-300 font-cairo text-center hover:text-stone-900 hover:bg-stone-200 dark:hover:text-teal-400 dark:hover:bg-white/[0.06] rounded-xl transition cursor-pointer"
             title="عرض تفاصيل المصروفات"
           >
             {v === 0 ? '—' : formatCurrency(v)}
@@ -186,7 +189,7 @@ export function ClosureRowComp({
       if (isBankWithDetails && onShowExcelDetails) {
         return (
           <div className="flex items-center gap-1 w-full">
-            <span className="flex-1 min-w-0 py-1.5 text-sm text-stone-800 dark:text-slate-300 font-cairo text-center tabular-nums">{v === 0 ? '—' : formatCurrency(v)}</span>
+            <span className="flex-1 min-w-0 py-1 text-sm text-stone-800 dark:text-slate-300 font-cairo text-center tabular-nums">{v === 0 ? '—' : formatCurrency(v)}</span>
             <button
               type="button"
               onClick={() => onShowExcelDetails(field, row.id)}
@@ -199,7 +202,7 @@ export function ClosureRowComp({
           </div>
         )
       }
-      return <span className="block py-1.5 text-sm text-stone-800 dark:text-slate-300 font-cairo text-center">{v === 0 ? '—' : formatCurrency(v)}</span>
+      return <span className="block py-1 text-sm text-stone-800 dark:text-slate-300 font-cairo text-center">{v === 0 ? '—' : formatCurrency(v)}</span>
     }
     // الصف مفتوح: مدى/فيزا/ماستر/تحويل — دائماً حقل قابل للتعديل اليدوي؛ إن وُجدت تفاصيل إكسل نضيف زر سجل التغيير
     const isExpenses = field === 'expenses'
@@ -245,7 +248,7 @@ export function ClosureRowComp({
         tabIndex={tabIndex}
         disabled={disabled}
         title={disabled ? 'لا يمكن الإدخال قبل إدخال رصيد البرنامج كاش' : (field === 'expenseCompensation' ? 'يجب أن يكون مساوياً أو أقل من مبلغ المصروفات' : undefined)}
-        className="cashbox-input w-full min-h-[2.25rem] px-2 py-2 rounded-xl bg-white dark:bg-slate-900/70 border-2 border-stone-400 dark:border-white/[0.06] text-stone-900 dark:text-white text-sm font-cairo text-center focus:border-teal-500/50 focus:ring-2 focus:ring-teal-500/20 dark:focus:border-teal-500/40 dark:focus:ring-teal-500/20 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+        className="cashbox-input w-full min-h-[1.6rem] px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900/70 border-2 border-stone-400 dark:border-white/[0.06] text-stone-900 dark:text-white text-sm font-cairo text-center focus:border-teal-500/50 focus:ring-2 focus:ring-teal-500/20 dark:focus:border-teal-500/40 dark:focus:ring-teal-500/20 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
       />
     )
     if (disabled && onLockedFieldClick) {
@@ -319,10 +322,10 @@ export function ClosureRowComp({
       <tr data-row-id={row.id} className={`bg-transparent border-l-4 border-l-teal-500 dark:border-l-teal-500/40 border-b-2 border-stone-500 dark:border-teal-500/20 ${isStickyRows ? 'sticky-label-row' : ''}`}>
         <td
           colSpan={16}
-          className={`py-1 px-2 sm:px-3 align-middle text-[10px] sm:text-[11px] font-semibold font-cairo whitespace-nowrap ${stickyLabelClass}`}
+          className={`py-0.5 px-2 sm:px-3 align-middle text-[10px] sm:text-[11px] font-semibold font-cairo whitespace-nowrap ${stickyLabelClass}`}
           style={{ lineHeight: 1.2, verticalAlign: 'middle', paddingInlineStart: '4%' }}
         >
-          <span className="inline-flex items-center gap-2 flex-wrap rounded-lg border-2 border-stone-400 dark:border-teal-500/30 bg-stone-50 dark:bg-teal-500/10 px-2.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(20,184,166,0.08)]">
+          <span className="inline-flex items-center gap-1.5 flex-wrap rounded-lg border-2 border-stone-400 dark:border-teal-500/30 bg-stone-50 dark:bg-teal-500/10 px-2 py-0.5 shadow-sm dark:shadow-[0_2px_6px_rgba(20,184,166,0.08)]">
             {displayName === 'أكثر من موظف' && onShowEmployeeNames ? (
               <button
                 type="button"
@@ -337,6 +340,35 @@ export function ClosureRowComp({
             )}
             <span className="text-stone-500 dark:text-slate-400">·</span>
             <span className="tabular-nums font-medium text-stone-600 dark:text-slate-400">{labelDateTime}</span>
+            {onOpenShiftNotesModal && (
+              <>
+                <span className="text-stone-500 dark:text-slate-400">·</span>
+                <span className="inline-flex items-center gap-1.5">
+                  {!isClosed && isFirstActive ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpenShiftNotesModal(row, 'edit')}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold font-cairo bg-teal-500/20 dark:bg-teal-500/25 text-teal-700 dark:text-teal-300 border border-teal-400/50 dark:border-teal-500/40 hover:bg-teal-500/30 dark:hover:bg-teal-500/35 transition-colors"
+                      title="تسجيل ملاحظات الشيفت"
+                    >
+                      ملاحظات الشيفت
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => onOpenShiftNotesModal(row, 'view')}
+                    title={(row.notes || '').trim() ? 'عرض ملاحظات الشيفت' : 'لا توجد ملاحظات'}
+                    className={`inline-flex items-center justify-center w-6 h-6 rounded-md transition-colors ${(row.notes || '').trim() ? 'text-red-500 dark:text-red-400 animate-pulse' : 'text-stone-400 dark:text-slate-500'}`}
+                    aria-label="عرض ملاحظات الشيفت"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  </button>
+                </span>
+              </>
+            )}
           </span>
         </td>
       </tr>
@@ -381,7 +413,7 @@ export function ClosureRowComp({
           data-transfer-target
           data-field={k}
           data-row-id={row.id}
-          className={`p-1.5 text-center align-middle ${rowBgClass} ${lockedPulseField === k ? 'locked-cell-pulse' : ''} ${stickyDataClass} ${k === 'cash' ? FRAME_FIRST : FRAME_MID}`}
+          className={`p-1 text-center align-middle ${rowBgClass} ${lockedPulseField === k ? 'locked-cell-pulse' : ''} ${stickyDataClass} ${k === 'cash' ? FRAME_FIRST : FRAME_MID}`}
         >
           {renderNum(k)}
         </td>
@@ -390,24 +422,24 @@ export function ClosureRowComp({
         data-transfer-target
         data-field="programBalanceCash"
         data-row-id={row.id}
-        className={`p-1.5 text-center align-middle ${rowBgClass} ${programBalancePulse && isFirstActive ? 'program-balance-pulse-cell' : ''} ${stickyDataClass} ${FRAME_MID}`}
+        className={`p-1 text-center align-middle ${rowBgClass} ${programBalancePulse && isFirstActive ? 'program-balance-pulse-cell' : ''} ${stickyDataClass} ${FRAME_MID}`}
         title={!programBalanceFilled && isFirstActive ? 'لا يمكن الإدخال في الخانات الأخرى قبل إدخال رصيد البرنامج كاش هنا' : undefined}
       >
         {renderNum('programBalanceCash')}
       </td>
-      <td className={`p-1.5 text-center align-middle ${rowBgClass} ${stickyDataClass} ${FRAME_LAST}`}>
+      <td className={`p-1 text-center align-middle ${rowBgClass} ${stickyDataClass} ${FRAME_LAST}`}>
         {onShowVarianceExplanation ? (
           <button
             type="button"
             onClick={() => onShowVarianceExplanation('cash', row)}
-            className={`block w-full min-h-[2.25rem] py-2 px-2 rounded-xl border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums transition cursor-pointer hover:bg-stone-50 dark:hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-teal-500/20 ${cashVariance === 0 ? 'cursor-default text-stone-500 dark:text-slate-500' : `${cashVarianceColor}`}`}
+            className={`block w-full min-h-[1.6rem] py-1.5 px-2 rounded-lg border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums transition cursor-pointer hover:bg-stone-50 dark:hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-teal-500/20 ${cashVariance === 0 ? 'cursor-default text-stone-500 dark:text-slate-500' : `${cashVarianceColor}`}`}
             title={cashVariance === 0 ? undefined : 'شرح سبب انحراف الكاش'}
             disabled={cashVariance === 0}
           >
             {cashVariance === 0 ? '—' : formatCurrency(cashVariance)}
           </button>
         ) : (
-          <span className={`block w-full min-h-[2.25rem] py-2 px-2 rounded-xl border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums ${cashVariance === 0 ? 'text-stone-500 dark:text-slate-500' : cashVarianceColor}`}>{cashVariance === 0 ? '—' : formatCurrency(cashVariance)}</span>
+          <span className={`block w-full min-h-[1.6rem] py-1.5 px-2 rounded-lg border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums ${cashVariance === 0 ? 'text-stone-500 dark:text-slate-500' : cashVarianceColor}`}>{cashVariance === 0 ? '—' : formatCurrency(cashVariance)}</span>
         )}
       </td>
       {NUM_KEYS.slice(5, 9).map((k) => (
@@ -416,13 +448,13 @@ export function ClosureRowComp({
           data-transfer-target
           data-field={k}
           data-row-id={row.id}
-          className={`p-1.5 text-center align-middle ${rowBgClass} ${lockedPulseField === k ? 'locked-cell-pulse' : ''} ${stickyDataClass} ${k === 'mada' ? FRAME_FIRST : FRAME_MID}`}
+          className={`p-1 text-center align-middle ${rowBgClass} ${lockedPulseField === k ? 'locked-cell-pulse' : ''} ${stickyDataClass} ${k === 'mada' ? FRAME_FIRST : FRAME_MID}`}
         >
           {renderNum(k)}
         </td>
       ))}
-      <td className={`p-1.5 text-center align-middle ${rowBgClass} ${stickyDataClass} ${FRAME_MID}`}>
-        <span className="block w-full min-h-[2.25rem] py-2 px-2 rounded-xl border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums text-stone-800 dark:text-slate-200 font-medium">
+      <td className={`p-1 text-center align-middle ${rowBgClass} ${stickyDataClass} ${FRAME_MID}`}>
+        <span className="block w-full min-h-[1.6rem] py-1.5 px-2 rounded-lg border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums text-stone-800 dark:text-slate-200 font-medium">
           {(() => {
             const total = row.mada + row.visa + row.mastercard
             return total === 0 ? '—' : formatCurrency(total)
@@ -433,23 +465,23 @@ export function ClosureRowComp({
         data-transfer-target
         data-field="programBalanceBank"
         data-row-id={row.id}
-        className={`p-1.5 text-center align-middle ${rowBgClass} ${lockedPulseField === 'programBalanceBank' ? 'locked-cell-pulse' : ''} ${stickyDataClass} ${FRAME_MID}`}
+        className={`p-1 text-center align-middle ${rowBgClass} ${lockedPulseField === 'programBalanceBank' ? 'locked-cell-pulse' : ''} ${stickyDataClass} ${FRAME_MID}`}
       >
         {renderNum('programBalanceBank')}
       </td>
-      <td className={`p-1.5 text-center align-middle ${rowBgClass} ${stickyDataClass} ${FRAME_LAST}`}>
+      <td className={`p-1 text-center align-middle ${rowBgClass} ${stickyDataClass} ${FRAME_LAST}`}>
         {onShowVarianceExplanation ? (
           <button
             type="button"
             onClick={() => onShowVarianceExplanation('bank', row)}
-            className={`block w-full min-h-[2.25rem] py-2 px-2 rounded-xl border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums transition cursor-pointer hover:bg-stone-50 dark:hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-teal-500/20 ${bankVariance === 0 ? 'cursor-default text-stone-500 dark:text-slate-500' : `${bankVarianceColor}`}`}
+            className={`block w-full min-h-[1.6rem] py-1.5 px-2 rounded-lg border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums transition cursor-pointer hover:bg-stone-50 dark:hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-teal-500/20 ${bankVariance === 0 ? 'cursor-default text-stone-500 dark:text-slate-500' : `${bankVarianceColor}`}`}
             title={bankVariance === 0 ? undefined : 'شرح سبب انحراف البنك'}
             disabled={bankVariance === 0}
           >
             {bankVariance === 0 ? '—' : formatCurrency(bankVariance)}
           </button>
         ) : (
-          <span className={`block w-full min-h-[2.25rem] py-2 px-2 rounded-xl border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums ${bankVariance === 0 ? 'text-stone-500 dark:text-slate-500' : bankVarianceColor}`}>{bankVariance === 0 ? '—' : formatCurrency(bankVariance)}</span>
+          <span className={`block w-full min-h-[1.6rem] py-1.5 px-2 rounded-lg border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums ${bankVariance === 0 ? 'text-stone-500 dark:text-slate-500' : bankVarianceColor}`}>{bankVariance === 0 ? '—' : formatCurrency(bankVariance)}</span>
         )}
       </td>
       <td className={`px-0.5 py-0.5 text-center align-middle overflow-hidden min-w-0 bg-transparent ${stickyDataClass}`}>
