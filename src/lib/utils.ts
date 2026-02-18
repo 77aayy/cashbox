@@ -14,7 +14,7 @@ export function getGreeting(date: Date): { label: string; kind: GreetingKind } {
 // ─── معادلات التقفيلة (مراجعة نهائية) ─────────────────────────────────────
 //
 // 1) بنك نزيل (محسوب تلقائياً، للعرض فقط):
-//    بنك نزيل = مدى + فيزا + ماستر كارد (تحويل بنكي للعرض فقط — لا يدخل في المعادلات)
+//    بنك نزيل = مدى + فيزا + ماستر كارد + أمريكان إكسبريس (تحويل بنكي للعرض فقط — لا يدخل في المعادلات)
 //
 // 2) انحراف البنك:
 //    انحراف البنك = بنك نزيل − اجمالى الموازنه (خانة اجمالى الموازنه = programBalanceBank)
@@ -31,9 +31,9 @@ export function getGreeting(date: Date): { label: string; kind: GreetingKind } {
 //    variance = المجموع النقدي − رصيد البرنامج الكلي
 // ───────────────────────────────────────────────────────────────────────────
 
-/** انحراف البنك = بنك نزيل − اجمالى الموازنه (بنك نزيل = مدى+فيزا+ماستر؛ اجمالى الموازنه = programBalanceBank) */
+/** انحراف البنك = بنك نزيل − اجمالى الموازنه (بنك نزيل = مدى+فيزا+ماستر+أمريكان إكسبريس؛ اجمالى الموازنه = programBalanceBank) */
 export function computeBankVariance(row: ClosureRow): number {
-  const totalBudget = row.mada + row.visa + row.mastercard
+  const totalBudget = row.mada + row.visa + row.mastercard + row.amex
   return Math.round((totalBudget - row.programBalanceBank) * 100) / 100
 }
 
@@ -50,7 +50,7 @@ export function computeCashVariance(row: ClosureRow): number {
 
 /** إجمالي الانحراف (كاش+بنك) — يُستخدم عند إغلاق الشفت فقط (تحويل بنكي لا يدخل في المعادلات) */
 export function computeVariance(row: ClosureRow): number {
-  const sum = row.cash + row.mada + row.visa + row.mastercard
+  const sum = row.cash + row.mada + row.visa + row.mastercard + row.amex
   const program = row.programBalanceCash + row.programBalanceBank
   return Math.round((sum - program) * 100) / 100
 }

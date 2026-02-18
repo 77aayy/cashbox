@@ -69,14 +69,16 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'warning' | 'info'; autoHideMs?: number } | null>(null)
   /** تأكيد الترحيل عندما يوجد رقم في الخانة (كاش أو مدى أو فيزا أو تحويل بنكي) */
   const [transferConfirm, setTransferConfirm] = useState<{ amount: number; currentValue: number; field: TransferField } | null>(null)
-  /** تأكيد ترحيل العمليات البنكية (مدى/فيزا/ماستر) عند وجود قيم في الخانات */
+  /** تأكيد ترحيل العمليات البنكية (مدى/فيزا/ماستر/أمريكان إكسبريس) عند وجود قيم في الخانات */
   const [bankTransferConfirm, setBankTransferConfirm] = useState<{
     mada: number
     visa: number
     mastercard: number
+    amex: number
     currentMada: number
     currentVisa: number
     currentMaster: number
+    currentAmex: number
   } | null>(null)
   /** صفوف محددة للطباعة */
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set())
@@ -266,14 +268,15 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
         updateRow(branch, active.id, rowDataRef.current[active.id] ?? active)
       }
       const current = (rowDataRef.current[active.id] ?? active) as ClosureRow
-      /** استخراج فقط: مدى، فيزا، ماستر كارد، تحويل بنكي — لا نغيّر الكاش من التقرير */
+      /** استخراج: مدى، فيزا، ماستر كارد، أمريكان إكسبريس، تحويل بنكي — لا نغيّر الكاش من التقرير */
       const filled = {
         mada: sums.mada,
         visa: sums.visa,
         mastercard: sums.mastercard,
+        amex: sums.amex,
         bankTransfer: sums.bankTransfer,
       }
-      const totalExtracted = sums.mada + sums.visa + sums.mastercard
+      const totalExtracted = sums.mada + sums.visa + sums.mastercard + sums.amex
       const employeeName = (excelEmployeeName && excelEmployeeName.trim() !== '') ? excelEmployeeName.trim() : current.employeeName
       const nextRow = { ...current, ...filled, employeeName, variance: computeVariance({ ...current, ...filled, employeeName }) }
       updateRow(branch, active.id, nextRow)
@@ -284,10 +287,11 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
       if (counts.mada > 0) parts.push(`مدى ${formatCurrency(sums.mada)}`)
       if (counts.visa > 0) parts.push(`فيزا ${formatCurrency(sums.visa)}`)
       if (counts.mastercard > 0) parts.push(`ماستر كارد ${formatCurrency(sums.mastercard)}`)
+      if (counts.amex > 0) parts.push(`أمريكان إكسبريس ${formatCurrency(sums.amex)}`)
       if (counts.bankTransfer > 0) parts.push(`تحويل بنكي ${formatCurrency(sums.bankTransfer)}`)
       const detail = parts.length > 0 ? parts.join(' — ') + ` — المجموع: ${formatCurrency(totalExtracted)}` : ''
       setToast({
-        msg: totalExtracted > 0 ? `تم استخراج: ${detail}` : 'لم يُعثر على مدى/فيزا/ماستر كارد/تحويل بنكي في الملف',
+        msg: totalExtracted > 0 ? `تم استخراج: ${detail}` : 'لم يُعثر على مدى/فيزا/ماستر كارد/أمريكان إكسبريس/تحويل بنكي في الملف',
         type: totalExtracted > 0 ? 'success' : 'info',
       })
     },
@@ -464,6 +468,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
         mada: 0,
         visa: 0,
         mastercard: 0,
+        amex: 0,
         bankTransfer: 0,
         programBalanceCash: 0,
         programBalanceBank: 0,
@@ -582,7 +587,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
         .map((r, idx) => {
           const rawName = r.status === 'closed' ? r.employeeName : (optsFirstActiveId && r.id === optsFirstActiveId && currentUserName ? currentUserName : r.employeeName)
           const employeeNameForPrint = (rawName ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-          const bankTotal = r.mada + r.visa + r.mastercard
+          const bankTotal = r.mada + r.visa + r.mastercard + (r.amex ?? 0)
           const bankVariance = computeBankVariance(r)
           const cashVariance = computeCashVariance(r)
           const expenses = (r as { expenses?: number }).expenses ?? 0
@@ -628,8 +633,9 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                     <div class="row"><span class="label">مدى</span><span class="val">${formatCurrency(r.mada)}</span></div>
                     <div class="row"><span class="label">فيزا</span><span class="val">${formatCurrency(r.visa)}</span></div>
                     <div class="row"><span class="label">ماستر كارد</span><span class="val">${formatCurrency(r.mastercard)}</span></div>
+                    <div class="row"><span class="label">أمريكان إكسبريس</span><span class="val">${formatCurrency((r as { amex?: number }).amex ?? 0)}</span></div>
                     <div class="row"><span class="label">تحويل بنكي</span><span class="val">${formatCurrency(r.bankTransfer)}</span></div>
-                    <div class="row"><span class="label">بنك نزيل (مدى+فيزا+ماستر)</span><span class="val total">${formatCurrency(bankTotal)}</span></div>
+                    <div class="row"><span class="label">بنك نزيل (مدى+فيزا+ماستر+أمريكان إكسبريس)</span><span class="val total">${formatCurrency(bankTotal)}</span></div>
                     <div class="row"><span class="label">اجمالى الموازنه</span><span class="val">${formatCurrency((r.programBalanceBank as number) ?? 0)}</span></div>
                     <div class="row highlight variance-row"><span class="label">انحراف البنك</span><span class="val ${bankVarClass}">${formatCurrency(bankVariance)}</span></div>
                   </div>
@@ -639,7 +645,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
               ${notesHtml}
               </div>
               <footer class="page-footer">
-                <p class="footer-formulas">فئات الكاش (ريال): ${denomsPrintRef}. — بنك نزيل = مدى + فيزا + ماستر كارد (تحويل بنكي للعرض فقط) — انحراف البنك = بنك نزيل − اجمالى الموازنه — انحراف الكاش = (كاش + مرسل للخزنة + مصروفات فعّالة) − رصيد البرنامج كاش</p>
+                <p class="footer-formulas">فئات الكاش (ريال): ${denomsPrintRef}. — بنك نزيل = مدى + فيزا + ماستر كارد + أمريكان إكسبريس (تحويل بنكي للعرض فقط) — انحراف البنك = بنك نزيل − اجمالى الموازنه — انحراف الكاش = (كاش + مرسل للخزنة + مصروفات فعّالة) − رصيد البرنامج كاش</p>
                 <p>${branchLabel ? `فرع ${branchLabel} — ` : ''}تاريخ الطباعة: ${formatDateTime(new Date())} ${list.length > 1 ? ` — تقفيلة ${idx + 1} من ${list.length}` : ''}</p>
               </footer>
             </div>`
@@ -931,7 +937,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
   }, [deleteAllClosedConfirm, adminCodeInput, loadRows, branch])
 
   const transferFieldLabel = (f: TransferField) =>
-    f === 'cash' ? 'الكاش' : f === 'programBalanceBank' ? 'اجمالى الموازنه' : f === 'mada' ? 'مدى' : f === 'visa' ? 'فيزا' : f === 'mastercard' ? 'ماستر كارد' : 'تحويل بنكي'
+    f === 'cash' ? 'الكاش' : f === 'programBalanceBank' ? 'اجمالى الموازنه' : f === 'mada' ? 'مدى' : f === 'visa' ? 'فيزا' : f === 'mastercard' ? 'ماستر كارد' : f === 'amex' ? 'أمريكان إكسبريس' : 'تحويل بنكي'
 
   const getTransferTargetRect = useCallback((rowId: string, field: string): TransferFlyRect | null => {
     const el = document.querySelector(
@@ -1000,7 +1006,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
   )
 
   const handleTransferFromBankOps = useCallback(
-    (mada: number, visa: number, mastercard: number, options?: BankOpTransferOptions) => {
+    (mada: number, visa: number, mastercard: number, amex: number, options?: BankOpTransferOptions) => {
       if (!firstActiveId) {
         setToast({ msg: 'لا يوجد صف نشط لترحيل العمليات البنكية إليه', type: 'warning' })
         return
@@ -1010,19 +1016,22 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
       const curMada = (activeRow.mada as number) ?? 0
       const curVisa = (activeRow.visa as number) ?? 0
       const curMaster = (activeRow.mastercard as number) ?? 0
-      const needConfirm = (curMada > 0 && mada > 0) || (curVisa > 0 && visa > 0) || (curMaster > 0 && mastercard > 0)
+      const curAmex = (activeRow.amex as number) ?? 0
+      const needConfirm = (curMada > 0 && mada > 0) || (curVisa > 0 && visa > 0) || (curMaster > 0 && mastercard > 0) || (curAmex > 0 && amex > 0)
       if (needConfirm) {
         setBankTransferConfirm({
           mada,
           visa,
           mastercard,
+          amex,
           currentMada: curMada,
           currentVisa: curVisa,
           currentMaster: curMaster,
+          currentAmex: curAmex,
         })
         return
       }
-      const amount = mada > 0 ? mada : visa > 0 ? visa : mastercard
+      const amount = mada > 0 ? mada : visa > 0 ? visa : mastercard > 0 ? mastercard : amex
       if (options?.sourceRect && options?.targetField && amount > 0) {
         const targetRect = getTransferTargetRect(firstActiveId, options.targetField)
         if (targetRect) {
@@ -1038,10 +1047,12 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
       handleUpdate(firstActiveId, 'mada', curMada + mada)
       handleUpdate(firstActiveId, 'visa', curVisa + visa)
       handleUpdate(firstActiveId, 'mastercard', curMaster + mastercard)
+      handleUpdate(firstActiveId, 'amex', curAmex + amex)
       const parts: string[] = []
       if (mada > 0) parts.push(`مدى ${formatCurrency(mada)}`)
       if (visa > 0) parts.push(`فيزا ${formatCurrency(visa)}`)
       if (mastercard > 0) parts.push(`ماستر ${formatCurrency(mastercard)}`)
+      if (amex > 0) parts.push(`أمريكان إكسبريس ${formatCurrency(amex)}`)
       setToast({ msg: `تم ترحيل العمليات البنكية: ${parts.join('، ') || '—'}`, type: 'success' })
     },
     [firstActiveId, rows, handleUpdate, getTransferTargetRect]
@@ -1050,12 +1061,12 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
   const handleBankTransferConfirmYes = useCallback(
     (e?: React.MouseEvent<HTMLButtonElement>) => {
       if (!bankTransferConfirm || !firstActiveId) return
-      const { mada, visa, mastercard, currentMada, currentVisa, currentMaster } = bankTransferConfirm
+      const { mada, visa, mastercard, amex, currentMada, currentVisa, currentMaster, currentAmex } = bankTransferConfirm
       if (e) {
         const rect = e.currentTarget.getBoundingClientRect()
         const sourceRect: TransferFlyRect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
-        const field = mada > 0 ? 'mada' : visa > 0 ? 'visa' : 'mastercard'
-        const amount = mada > 0 ? mada : visa > 0 ? visa : mastercard
+        const field = mada > 0 ? 'mada' : visa > 0 ? 'visa' : mastercard > 0 ? 'mastercard' : 'amex'
+        const amount = mada > 0 ? mada : visa > 0 ? visa : mastercard > 0 ? mastercard : amex
         const targetRect = getTransferTargetRect(firstActiveId, field)
         if (targetRect) {
           setTransferFly({
@@ -1070,10 +1081,12 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
       handleUpdate(firstActiveId, 'mada', currentMada + mada)
       handleUpdate(firstActiveId, 'visa', currentVisa + visa)
       handleUpdate(firstActiveId, 'mastercard', currentMaster + mastercard)
+      handleUpdate(firstActiveId, 'amex', currentAmex + amex)
       const parts: string[] = []
       if (mada > 0) parts.push(`مدى ${formatCurrency(mada)}`)
       if (visa > 0) parts.push(`فيزا ${formatCurrency(visa)}`)
       if (mastercard > 0) parts.push(`ماستر ${formatCurrency(mastercard)}`)
+      if (amex > 0) parts.push(`أمريكان إكسبريس ${formatCurrency(amex)}`)
       setToast({ msg: `تم ترحيل العمليات البنكية: ${parts.join('، ') || '—'}`, type: 'success' })
       setBankTransferConfirm(null)
     },
@@ -1156,7 +1169,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
 
   return (
     <div className="min-h-screen min-h-[100dvh] page-bg-warm dark:bg-slate-900 text-stone-900 dark:text-slate-200 font-cairo page-bg-pattern flex flex-col">
-      <header className="header-glass sticky top-0 z-40 border-b-2 border-stone-300 dark:border-white/10 shadow-sm dark:shadow-none safe-top">
+      <header className="header-glass sticky top-0 z-40 border-b-2 border-stone-300 dark:border-white/[0.06] shadow-sm dark:shadow-none safe-top">
         <div className="mx-auto w-full max-w-[100%] max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             {(() => {
@@ -1190,7 +1203,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
               }
               const isNight = kind === 'night'
               return (
-                <h1 className="flex items-center gap-1.5 sm:gap-2 py-1.5 px-2 sm:px-3 rounded-lg sm:rounded-xl border-2 border-stone-300 dark:border-white/10 bg-[#f0ebe3] dark:bg-slate-800/50 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
+                <h1 className="flex items-center gap-1.5 sm:gap-2 py-1.5 px-2 sm:px-3 rounded-lg sm:rounded-xl border-2 border-stone-300 dark:border-white/[0.06] bg-[#f0ebe3] dark:bg-slate-800/50 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
                   <span className={`flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg shrink-0 ${isNight ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300' : 'bg-stone-200 text-stone-700 dark:bg-teal-500/15 dark:text-teal-400'}`}>
                     {icons[kind]}
                   </span>
@@ -1202,11 +1215,12 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                 </h1>
               )
             })()}
-            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-stone-200 dark:bg-teal-500/15 text-stone-800 dark:text-teal-300 text-xs font-cairo font-semibold border-2 border-stone-400 dark:border-teal-500/30 shadow-sm dark:shadow-none">
+            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-stone-200 dark:bg-teal-500/15 text-stone-800 dark:text-teal-300 text-xs font-cairo font-semibold border-2 border-stone-400 dark:border-teal-500/18 shadow-sm dark:shadow-none">
               فرع {BRANCH_LABELS[branch]}
             </span>
             <div className="relative z-[50] rounded-xl border border-stone-300 dark:border-slate-600/50 bg-stone-200 dark:bg-slate-800/60 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(0,0,0,0.15)]">
               <button
+                data-testid="theme-toggle"
                 ref={themeToggleRef}
                 type="button"
                 onClick={(e) => {
@@ -1215,13 +1229,24 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                   handleThemeToggle()
                 }}
                 className="flex items-center justify-center w-9 h-9 rounded-lg text-stone-700 hover:text-stone-900 hover:bg-stone-300 dark:text-slate-400 dark:hover:text-teal-400 dark:hover:bg-teal-500/10 transition cursor-pointer select-none touch-manipulation"
-                title={theme === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'}
-                aria-label={theme === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'}
+                title={theme === 'light' ? 'الوضع الفاتح (شمس)' : theme === 'dark' ? 'الوضع الداكن (تركواز)' : 'الوضع بينك بناتي'}
+                aria-label={theme === 'light' ? 'وضع فاتح — شمس' : theme === 'dark' ? 'وضع داكن — تركواز' : 'وضع بينك بناتي'}
               >
-                {theme === 'dark' ? (
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                {theme === 'light' ? (
+                  <svg className="w-4 h-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <circle cx="12" cy="12" r="3.5"/>
+                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42-1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l-1.42-1.42"/>
+                  </svg>
+                ) : theme === 'dark' ? (
+                  <svg className="w-4 h-4 text-teal-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <circle cx="12" cy="8" r="3.5"/>
+                    <path d="M6 21v-1.5a3.5 3.5 0 0 1 3.5-3.5h5a3.5 3.5 0 0 1 3.5 3.5V21"/>
+                  </svg>
                 ) : (
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                  <svg className="w-4 h-4 text-pink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <circle cx="12" cy="7" r="3.5"/>
+                    <path d="M8.5 11L12 20l3.5-9"/>
+                  </svg>
                 )}
               </button>
             </div>
@@ -1285,7 +1310,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                 type="button"
                 onClick={handleUploadFilesClick}
                 className="inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-sm font-cairo font-bold bg-teal-500 hover:bg-teal-600 dark:bg-gradient-to-r dark:from-violet-600 dark:to-indigo-600 dark:hover:from-violet-500 dark:hover:to-indigo-500 text-white border border-teal-400/50 dark:border-violet-400/30 shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
-                title="استخراج قيم مدى، فيزا، ماستر كارد، تحويل بنكي من تقرير إكسل"
+                title="استخراج قيم مدى، فيزا، ماستر كارد، أمريكان إكسبريس، تحويل بنكي من تقرير إكسل"
               >
                 <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
@@ -1296,7 +1321,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
               </button>
             </div>
             <span className="w-px h-5 bg-stone-300 dark:bg-white/10 rounded-full" aria-hidden="true" />
-            <div className="flex items-center gap-1 rounded-xl border-2 border-stone-400 dark:border-teal-500/30 page-surface-warm dark:bg-teal-500/10 px-1.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(20,184,166,0.12)]">
+            <div className="flex items-center gap-1 rounded-xl border-2 border-stone-400 dark:border-teal-500/18 page-surface-warm dark:bg-teal-500/10 px-1.5 py-1 shadow-sm dark:shadow-accent-sm">
               <span className="flex items-center justify-center w-6 h-6 rounded-md bg-stone-200 text-stone-800 dark:bg-teal-500/20 dark:text-teal-400 shrink-0" aria-hidden="true">
                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
@@ -1310,7 +1335,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                   onClick={() => setFilter(f.id)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
                     filter === f.id
-                      ? 'bg-teal-500/30 text-teal-900 border-2 border-teal-600 dark:bg-teal-500/25 dark:text-teal-300 dark:border-teal-500/40 shadow-sm'
+                      ? 'bg-teal-500/30 text-teal-900 border-2 border-teal-600 dark:bg-teal-500/25 dark:text-white dark:border-teal-500/24 shadow-sm'
                       : 'text-stone-700 border border-transparent hover:bg-stone-300 hover:text-stone-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-300'
                   }`}
                 >
@@ -1356,7 +1381,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
       <main className="mx-auto w-full max-w-[100%] max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] px-3 sm:px-4 py-1 sm:py-2 flex flex-col gap-2 sm:gap-3 flex-1 min-h-0">
         {/* جدول الصفوف — تصميم 2026: زجاجية خفيفة، تباين ناعم، تسلسل بصري واضح */}
         <div
-          className="rounded-2xl sm:rounded-3xl flex flex-col border-2 border-stone-400 dark:border-teal-500/25 page-surface-warm-card dark:bg-slate-800/30 backdrop-blur-sm shadow-[0_4px_20px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] min-h-[200px] sm:min-h-[240px] min-w-0 overflow-hidden"
+          className="rounded-2xl sm:rounded-3xl flex flex-col border-2 border-stone-400 dark:border-teal-500/14 page-surface-warm-card dark:bg-slate-800/30 backdrop-blur-sm shadow-[0_4px_20px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] min-h-[200px] sm:min-h-[240px] min-w-0 overflow-hidden"
         >
           <div className="px-3 sm:px-4 py-1 sm:py-1.5 border-b border-stone-300 dark:border-slate-600 flex items-center justify-end gap-2 shrink-0 rounded-t-2xl sm:rounded-t-3xl bg-stone-50/80 dark:bg-slate-800/50">
             <span className="text-[9px] sm:text-[10px] font-cairo text-stone-600 dark:text-slate-400 tabular-nums">
@@ -1398,20 +1423,21 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                   <th className="px-0.5 sm:px-1 py-3 sm:py-4 text-center text-xs font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[36px] rounded-t-2xl rounded-s-2xl sm:rounded-t-3xl sm:rounded-s-3xl bg-transparent">تحديد</th>
                   <th className="px-0.5 sm:px-1 py-3 sm:py-4 text-center text-xs font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[28px] bg-transparent">م</th>
                   {/* مجموعة الكاش: برواز واحد حول كاش → انحراف الكاش — نفس استدارة أقسام الصف (xl للوضوح) */}
-                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[52px] border-t-2 border-b-2 border-r-2 border-stone-200 dark:border-teal-500/20 rounded-s-xl bg-stone-300/90 dark:bg-slate-700/90">كاش</th>
-                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[100px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/20 bg-stone-300/90 dark:bg-slate-700/90" title="مرسل للخزنة — يدخل في معادلة انحراف الكاش">مرسل للخزنة</th>
-                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[100px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/20 bg-stone-300/90 dark:bg-slate-700/90" title="يُخصم من المصروفات في انحراف الكاش">تعويض م</th>
-                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[76px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/20 bg-stone-300/90 dark:bg-slate-700/90">المصروفات</th>
-                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[110px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/20 bg-stone-300/90 dark:bg-slate-700/90">كاش نزيل</th>
-                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-rose-700 dark:text-rose-400 align-middle font-cairo whitespace-nowrap min-w-[92px] border-t-2 border-b-2 border-l-2 border-stone-200 dark:border-teal-500/20 rounded-e-xl bg-stone-300/90 dark:bg-slate-700/90" title="الفرق بين المتوقع والفعلي للكاش">انحراف الكاش</th>
+                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[52px] border-t-2 border-b-2 border-r-2 border-stone-200 dark:border-teal-500/12 rounded-s-xl bg-stone-300/90 dark:bg-slate-700/90">كاش</th>
+                  <th className="px-1.5 sm:px-3 py-3 sm:py-4 text-center text-[10px] sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo min-w-[64px] sm:min-w-[100px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/12 bg-stone-300/90 dark:bg-slate-700/90 overflow-hidden break-words sm:whitespace-nowrap" title="مرسل للخزنة — يدخل في معادلة انحراف الكاش">مرسل للخزنة</th>
+                  <th className="px-1.5 sm:px-3 py-3 sm:py-4 text-center text-[10px] sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo min-w-[52px] sm:min-w-[100px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/12 bg-stone-300/90 dark:bg-slate-700/90 overflow-hidden break-words sm:whitespace-nowrap" title="يُخصم من المصروفات في انحراف الكاش">تعويض م</th>
+                  <th className="px-1.5 sm:px-3 py-3 sm:py-4 text-center text-[10px] sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[64px] sm:min-w-[76px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/12 bg-stone-300/90 dark:bg-slate-700/90">المصروفات</th>
+                  <th className="px-1.5 sm:px-3 py-3 sm:py-4 text-center text-[10px] sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo min-w-[64px] sm:min-w-[110px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/12 bg-stone-300/90 dark:bg-slate-700/90 overflow-hidden break-words sm:whitespace-nowrap">كاش نزيل</th>
+                  <th className="px-1.5 sm:px-3 py-3 sm:py-4 text-center text-[10px] sm:text-sm font-medium text-rose-700 dark:text-rose-400 align-middle font-cairo min-w-[72px] sm:min-w-[92px] border-t-2 border-b-2 border-l-2 border-stone-200 dark:border-teal-500/12 rounded-e-xl bg-stone-300/90 dark:bg-slate-700/90 overflow-hidden" title="الفرق بين المتوقع والفعلي للكاش"><span className="sm:whitespace-nowrap">انحراف<br className="sm:hidden" />الكاش</span></th>
                   {/* مجموعة البنك: برواز واحد حول مدى → انحراف البنك */}
-                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[52px] border-t-2 border-b-2 border-r-2 border-stone-200 dark:border-teal-500/20 rounded-s-xl bg-stone-300/90 dark:bg-slate-700/90">مدى</th>
-                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[52px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/20 bg-stone-300/90 dark:bg-slate-700/90">فيزا</th>
-                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[82px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/20 bg-stone-300/90 dark:bg-slate-700/90">ماستر كارد</th>
-                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-sky-600 dark:text-sky-400 align-middle font-cairo whitespace-nowrap min-w-[82px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/20 bg-stone-300/90 dark:bg-slate-700/90" title="للعرض فقط — لا يدخل في بنك نزيل ولا انحراف البنك">تحويل بنكي</th>
-                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[76px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/20 bg-stone-300/90 dark:bg-slate-700/90" title="بنك نزيل = مدى + فيزا + ماستر كارد">بنك نزيل</th>
-                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[100px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/20 bg-stone-300/90 dark:bg-slate-700/90">اجمالى الموازنه</th>
-                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-rose-700 dark:text-rose-400 align-middle font-cairo whitespace-nowrap min-w-[92px] border-t-2 border-b-2 border-l-2 border-stone-200 dark:border-teal-500/20 rounded-e-xl bg-stone-300/90 dark:bg-slate-700/90" title="الفرق بين بنك نزيل واجمالى الموازنه">انحراف البنك</th>
+                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[52px] border-t-2 border-b-2 border-r-2 border-stone-200 dark:border-teal-500/12 rounded-s-xl bg-stone-300/90 dark:bg-slate-700/90">مدى</th>
+                  <th className="px-2 sm:px-3 py-3 sm:py-4 text-center text-xs sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[52px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/12 bg-stone-300/90 dark:bg-slate-700/90">فيزا</th>
+                  <th className="px-1.5 sm:px-3 py-3 sm:py-4 text-center text-[10px] sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo min-w-[64px] sm:min-w-[82px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/12 bg-stone-300/90 dark:bg-slate-700/90 overflow-hidden break-words sm:whitespace-nowrap">ماستر كارد</th>
+                  <th className="px-1.5 sm:px-3 py-3 sm:py-4 text-center text-[10px] sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo whitespace-nowrap min-w-[64px] sm:min-w-[82px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/12 bg-stone-300/90 dark:bg-slate-700/90" title="أمريكان إكسبريس">أ- إكسبريس</th>
+                  <th className="px-1.5 sm:px-3 py-3 sm:py-4 text-center text-[10px] sm:text-sm font-medium text-sky-600 dark:text-sky-400 align-middle font-cairo min-w-[64px] sm:min-w-[82px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/12 bg-stone-300/90 dark:bg-slate-700/90 overflow-hidden break-words sm:whitespace-nowrap" title="للعرض فقط — لا يدخل في بنك نزيل ولا انحراف البنك">تحويل بنكي</th>
+                  <th className="px-1.5 sm:px-3 py-3 sm:py-4 text-center text-[10px] sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo min-w-[64px] sm:min-w-[76px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/12 bg-stone-300/90 dark:bg-slate-700/90 overflow-hidden break-words sm:whitespace-nowrap" title="بنك نزيل = مدى + فيزا + ماستر كارد + أمريكان إكسبريس">بنك نزيل</th>
+                  <th className="px-1.5 sm:px-3 py-3 sm:py-4 text-center text-[10px] sm:text-sm font-medium text-stone-700 dark:text-slate-300 align-middle font-cairo min-w-[72px] sm:min-w-[100px] border-t-2 border-b-2 border-stone-200 dark:border-teal-500/12 bg-stone-300/90 dark:bg-slate-700/90 overflow-hidden break-words sm:whitespace-nowrap" title="اجمالى الموازنه">أ-الموازنه</th>
+                  <th className="px-1.5 sm:px-3 py-3 sm:py-4 text-center text-[10px] sm:text-sm font-medium text-rose-700 dark:text-rose-400 align-middle font-cairo min-w-[72px] sm:min-w-[92px] border-t-2 border-b-2 border-l-2 border-stone-200 dark:border-teal-500/12 rounded-e-xl bg-stone-300/90 dark:bg-slate-700/90 overflow-hidden" title="الفرق بين بنك نزيل واجمالى الموازنه"><span className="sm:whitespace-nowrap">انحراف<br className="sm:hidden" />البنك</span></th>
                   <th className="px-0.5 py-1.5 sm:py-2 text-center align-middle font-cairo min-w-[44px] rounded-t-2xl rounded-e-2xl sm:rounded-t-3xl sm:rounded-e-3xl bg-transparent">
                     <div className="flex flex-col items-center justify-center gap-0.5 min-w-0">
                       <span className="text-[9px] sm:text-[10px] font-medium text-stone-700 dark:text-slate-300 whitespace-nowrap leading-none">إجراءات</span>
@@ -1419,7 +1445,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                         type="button"
                         onClick={requestDeleteAllClosed}
                         aria-label="حذف كل التقفيلات المغلقة"
-                        className="inline-flex items-center justify-center w-5 h-5 rounded border border-stone-300 dark:border-white/10 bg-white dark:bg-slate-700/50 text-stone-600 dark:text-slate-400 hover:bg-rose-50 dark:hover:bg-red-500/10 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:hover:border-red-500/20 transition-all shrink-0"
+                        className="inline-flex items-center justify-center w-5 h-5 rounded border border-stone-300 dark:border-white/[0.06] bg-white dark:bg-slate-700/50 text-stone-600 dark:text-slate-400 hover:bg-rose-50 dark:hover:bg-red-500/10 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:hover:border-red-500/20 transition-all shrink-0"
                         title="حذف كل التقفيلات المغلقة"
                       >
                         <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1466,12 +1492,12 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
             </table>
           </div>
           {(currentClosedPage > 1 || hasMoreClosedPages) && (
-            <div className="px-3 sm:px-4 py-2 sm:py-3 border-t-2 border-stone-400 dark:border-white/10 flex items-center justify-center gap-2 flex-wrap rounded-b-2xl sm:rounded-b-3xl page-surface-warm dark:bg-slate-800/50 backdrop-blur-sm">
+            <div className="px-3 sm:px-4 py-2 sm:py-3 border-t-2 border-stone-400 dark:border-white/[0.06] flex items-center justify-center gap-2 flex-wrap rounded-b-2xl sm:rounded-b-3xl page-surface-warm dark:bg-slate-800/50 backdrop-blur-sm">
               <button
                 type="button"
                 onClick={() => goToClosedPage(currentClosedPage - 1)}
                 disabled={currentClosedPage <= 1}
-                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-stone-300 dark:border-teal-500/30 bg-stone-50 dark:bg-teal-500/10 text-stone-800 dark:text-teal-400/95 hover:bg-stone-200 hover:border-stone-400 dark:hover:bg-teal-500/20 dark:hover:border-teal-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-stone-300 disabled:bg-stone-300 disabled:text-stone-600 dark:disabled:border-white/10 dark:disabled:bg-slate-800/60 dark:disabled:text-slate-500 transition-all"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-stone-300 dark:border-teal-500/18 bg-stone-50 dark:bg-teal-500/10 text-stone-800 dark:text-teal-400/95 hover:bg-stone-200 hover:border-stone-400 dark:hover:bg-teal-500/20 dark:hover:border-teal-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-stone-300 disabled:bg-stone-300 disabled:text-stone-600 dark:disabled:border-white/10 dark:disabled:bg-slate-800/60 dark:disabled:text-slate-500 transition-all"
                 aria-label="الصفحة السابقة"
               >
                 <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1487,8 +1513,8 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                     onClick={() => goToClosedPage(p)}
                     className={`inline-flex items-center justify-center min-w-[2.25rem] px-2 py-2 rounded-xl text-sm font-cairo font-medium transition-all ${
                       p === currentClosedPage
-                        ? 'bg-teal-500 dark:bg-teal-500/40 text-white border border-teal-500 dark:border-teal-500/50'
-                        : 'border border-stone-300 dark:border-teal-500/30 bg-stone-50 dark:bg-teal-500/10 text-stone-800 dark:text-teal-400/95 hover:bg-stone-200 dark:hover:bg-teal-500/20'
+                        ? 'bg-teal-500 dark:bg-teal-500/40 text-white border border-teal-500 dark:border-teal-500/32'
+                        : 'border border-stone-300 dark:border-teal-500/18 bg-stone-50 dark:bg-teal-500/10 text-stone-800 dark:text-teal-400/95 hover:bg-stone-200 dark:hover:bg-teal-500/20'
                     }`}
                     aria-label={p === 1 ? 'الرئيسية' : `صفحة ${p}`}
                   >
@@ -1500,7 +1526,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                 type="button"
                 onClick={() => goToClosedPage(currentClosedPage + 1)}
                 disabled={!hasMoreClosedPages}
-                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-stone-300 dark:border-teal-500/30 bg-stone-50 dark:bg-teal-500/10 text-stone-800 dark:text-teal-400/95 hover:bg-stone-200 hover:border-stone-400 dark:hover:bg-teal-500/20 dark:hover:border-teal-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-stone-300 disabled:bg-stone-300 disabled:text-stone-600 dark:disabled:border-white/10 dark:disabled:bg-slate-800/60 dark:disabled:text-slate-500 transition-all"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-cairo font-medium border border-stone-300 dark:border-teal-500/18 bg-stone-50 dark:bg-teal-500/10 text-stone-800 dark:text-teal-400/95 hover:bg-stone-200 hover:border-stone-400 dark:hover:bg-teal-500/20 dark:hover:border-teal-500/40 disabled:opacity-40 disabled:pointer-events-none disabled:border-stone-300 disabled:bg-stone-300 disabled:text-stone-600 dark:disabled:border-white/10 dark:disabled:bg-slate-800/60 dark:disabled:text-slate-500 transition-all"
                 aria-label="الصفحة التالية"
               >
                 التالي
@@ -1526,7 +1552,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                 <button
                   type="button"
                   onClick={handleUndoClose}
-                  className="btn-close-shift inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-cairo font-bold whitespace-nowrap border-2 border-teal-400 bg-teal-500 hover:bg-teal-600 text-white shadow-md dark:border-emerald-500/60 dark:bg-gradient-to-b dark:from-emerald-500/30 dark:to-emerald-600/20 dark:text-emerald-50 dark:shadow-[0_4px_24px_rgba(16,185,129,0.25)] dark:hover:from-emerald-500/40 dark:hover:to-emerald-600/30 dark:hover:shadow-[0_6px_28px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all select-none touch-manipulation min-h-[36px]"
+                  className="btn-close-shift inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-cairo font-bold whitespace-nowrap border-2 border-teal-400 bg-teal-500 hover:bg-teal-600 text-white shadow-md dark:border-emerald-500/38 dark:bg-gradient-to-b dark:from-emerald-500/30 dark:to-emerald-600/20 dark:text-emerald-50 dark:shadow-[0_4px_24px_rgba(16,185,129,0.25)] dark:hover:from-emerald-500/40 dark:hover:to-emerald-600/30 dark:hover:shadow-[0_6px_28px_rgba(16,185,129,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all select-none touch-manipulation min-h-[36px]"
                 >
                   <svg className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M3 10h10a5 5 0 015 5v2" />
@@ -1546,7 +1572,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
               disabled={!canCloseShift}
               className={`btn-close-shift inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-5 py-2 sm:py-2.5 w-full sm:w-auto sm:min-w-[180px] rounded-xl text-xs sm:text-sm font-cairo font-bold whitespace-nowrap border-2 select-none transition-all touch-manipulation min-h-[36px]
                 ${canCloseShift
-                  ? 'bg-teal-500 hover:bg-teal-600 text-white border-teal-400 shadow-md dark:bg-gradient-to-b dark:from-teal-500/50 dark:to-teal-600/40 dark:text-white dark:border-teal-400 dark:shadow-[0_4px_24px_rgba(20,184,166,0.25)] dark:hover:from-teal-500/60 dark:hover:to-teal-600/50 dark:hover:shadow-[0_6px_28px_rgba(20,184,166,0.3)] hover:scale-[1.02] active:scale-[0.98]'
+                  ? 'bg-teal-500 hover:bg-teal-600 text-white border-teal-400 shadow-md dark:bg-gradient-to-b dark:from-teal-500/50 dark:to-teal-600/40 dark:text-white dark:border-teal-400 dark:shadow-accent-md dark:hover:from-teal-500/60 dark:hover:to-teal-600/50 dark:hover:shadow-accent-md-hover hover:scale-[1.02] active:scale-[0.98]'
                   : 'opacity-60 bg-stone-200 text-stone-500 border-stone-300 dark:opacity-50 dark:bg-slate-800/40 dark:text-slate-500 dark:border-slate-600/50 cursor-not-allowed'
                 }`}
               title={canCloseShift ? 'إغلاق الشفت وحفظ التقفيلة' : 'أدخل رصيد البرنامج كاش وإجمالي الموازنة (البنك) أولاً'}
@@ -1618,16 +1644,17 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
           mada: 'مدى',
           visa: 'فيزا',
           mastercard: 'ماستر كارد',
+          amex: 'أمريكان إكسبريس',
           bankTransfer: 'تحويل بنكي',
         }
         const title = `سجل التغيير — ${labels[field]}`
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default" role="dialog" aria-modal="true" aria-labelledby="excel-detail-title" onClick={() => setExcelDetailModal(null)}>
-            <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-[95vw] sm:max-w-sm w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
-              <h2 id="excel-detail-title" className="text-base font-bold text-stone-900 dark:text-teal-400 p-4 pb-2 border-b-2 border-stone-400 dark:border-white/10">
+            <div className="rounded-2xl border border-stone-300 dark:border-white/[0.06] bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-[95vw] sm:max-w-sm w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+              <h2 id="excel-detail-title" className="text-base font-bold text-stone-900 dark:text-teal-400 p-4 pb-2 border-b-2 border-stone-400 dark:border-white/[0.06]">
                 {title}
               </h2>
-              <div className="p-3 space-y-2 border-b border-stone-200 dark:border-white/10">
+              <div className="p-3 space-y-2 border-b border-stone-200 dark:border-white/[0.06]">
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-stone-600 dark:text-slate-400">من إكسل (مرفوع):</span>
                   <span className="tabular-nums font-medium text-stone-800 dark:text-teal-200">{formatCurrency(fromExcel)}</span>
@@ -1656,14 +1683,14 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                           <span className="tabular-nums font-medium text-stone-800 dark:text-teal-200 shrink-0">{formatCurrency(t.amount)}</span>
                         </div>
                         {t.purpose && (
-                          <p className="text-xs font-cairo text-stone-600 dark:text-slate-300 mt-1 pr-0 border-t border-stone-300 dark:border-teal-500/25 pt-1">
+                          <p className="text-xs font-cairo text-stone-600 dark:text-slate-300 mt-1 pr-0 border-t border-stone-300 dark:border-teal-500/14 pt-1">
                             {t.purpose}
                           </p>
                         )}
                       </div>
                     ))}
                   </div>
-                  <div className="p-4 pt-2 border-t border-stone-300 dark:border-teal-500/30 flex justify-between items-center bg-stone-100 dark:bg-slate-900/50">
+                  <div className="p-4 pt-2 border-t border-stone-300 dark:border-teal-500/18 flex justify-between items-center bg-stone-100 dark:bg-slate-900/50">
                     <span className="font-bold text-stone-800 dark:text-slate-200">إجمالي الإكسل</span>
                     <span className="tabular-nums font-bold text-stone-800 dark:text-teal-400">{formatCurrency(fromExcel)}</span>
                   </div>
@@ -1688,7 +1715,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
           let count = 0
           let total = 0
           if (lastExcelDetails) {
-            for (const key of ['mada', 'visa', 'mastercard', 'bankTransfer'] as const) {
+            for (const key of ['mada', 'visa', 'mastercard', 'amex', 'bankTransfer'] as const) {
               const list = lastExcelDetails[key] ?? []
               for (const t of list) {
                 if ((t.employeeName ?? '').trim() === name) {
@@ -1702,7 +1729,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
         })
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default" role="dialog" aria-modal="true" aria-labelledby="employee-names-title" onClick={() => setShowEmployeeNamesModal(false)}>
-            <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-[95vw] sm:max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="rounded-2xl border border-stone-300 dark:border-white/[0.06] bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-[95vw] sm:max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
               <h2 id="employee-names-title" className="text-base font-bold text-stone-800 dark:text-teal-400 p-4 pb-2 border-b border-white/10">
                 أسماء الموظفين في العمليات المستوردة
               </h2>
@@ -1740,7 +1767,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
         const programBalanceCash = row.programBalanceCash ?? 0
         const expectedProgramCash = cash + sentToTreasury + effectiveExpenses
         const cashVariance = computeCashVariance(row)
-        const bankTotal = row.mada + row.visa + row.mastercard
+        const bankTotal = row.mada + row.visa + row.mastercard + (row.amex ?? 0)
         const programBalanceBank = row.programBalanceBank ?? 0
         const bankVariance = computeBankVariance(row)
         const isCash = type === 'cash'
@@ -1751,8 +1778,8 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
         const swapAmount = showSwapAlert ? Math.abs(cashVariance) : 0
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm cursor-default" role="dialog" aria-modal="true" aria-labelledby="variance-explanation-title" onClick={() => setVarianceExplanationModal(null)}>
-            <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-[95vw] sm:max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
-              <h2 id="variance-explanation-title" className="text-base font-bold text-stone-900 dark:text-teal-400 p-4 pb-2 border-b-2 border-stone-400 dark:border-white/10">
+            <div className="rounded-2xl border border-stone-300 dark:border-white/[0.06] bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-[95vw] sm:max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+              <h2 id="variance-explanation-title" className="text-base font-bold text-stone-900 dark:text-teal-400 p-4 pb-2 border-b-2 border-stone-400 dark:border-white/[0.06]">
                 {title}
               </h2>
               <div className="overflow-y-auto flex-1 min-h-0 p-4 space-y-3 text-sm text-stone-800 dark:text-slate-300">
@@ -1764,10 +1791,10 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                       <li className="flex justify-between gap-2"><span>مرسل للخزنة</span><span className="tabular-nums font-medium text-stone-800 dark:text-teal-400">{formatCurrency(sentToTreasury)}</span></li>
                       <li className="flex justify-between gap-2"><span>مصروفات</span><span className="tabular-nums font-medium text-stone-800 dark:text-teal-400">{formatCurrency(expenses)}</span></li>
                       <li className="flex justify-between gap-2"><span>تعويض مصروفات</span><span className="tabular-nums font-medium text-stone-800 dark:text-teal-400">− {formatCurrency(expenseCompensation)}</span></li>
-                      <li className="flex justify-between gap-2 border-t border-stone-300 dark:border-white/10 pt-1.5"><span>مصروفات فعّالة (صافي)</span><span className="tabular-nums font-medium text-stone-800 dark:text-teal-400">{formatCurrency(effectiveExpenses)}</span></li>
+                      <li className="flex justify-between gap-2 border-t border-stone-300 dark:border-white/[0.06] pt-1.5"><span>مصروفات فعّالة (صافي)</span><span className="tabular-nums font-medium text-stone-800 dark:text-teal-400">{formatCurrency(effectiveExpenses)}</span></li>
                       <li className="flex justify-between gap-2 font-medium"><span>كاش + مرسل للخزنة + مصروفات فعّالة</span><span className="tabular-nums font-bold text-stone-900 dark:text-teal-300">{formatCurrency(expectedProgramCash)}</span></li>
                       <li className="flex justify-between gap-2"><span>رصيد البرنامج كاش</span><span className="tabular-nums font-medium text-stone-800 dark:text-teal-400">− {formatCurrency(programBalanceCash)}</span></li>
-                      <li className="flex justify-between gap-2 border-t-2 border-stone-400 dark:border-teal-500/30 pt-2 font-bold text-stone-900 dark:text-teal-300"><span>انحراف الكاش</span><span className="tabular-nums">{cashVariance > 0 ? '+' : ''}{formatCurrency(cashVariance)}</span></li>
+                      <li className="flex justify-between gap-2 border-t-2 border-stone-400 dark:border-teal-500/18 pt-2 font-bold text-stone-900 dark:text-teal-300"><span>انحراف الكاش</span><span className="tabular-nums">{cashVariance > 0 ? '+' : ''}{formatCurrency(cashVariance)}</span></li>
                     </ul>
                     <p className="text-xs text-stone-600 dark:text-slate-400 pt-1">
                       {cashVariance > 0 ? 'زيادة: الكاش الفعلي (أو المرسل + المصروف الفعلي) أكبر من رصيد البرنامج.' : cashVariance < 0 ? 'عجز: رصيد البرنامج كاش أكبر من المتوقّع من الكاش والمرسل والمصروف.' : 'لا يوجد انحراف.'}
@@ -1780,10 +1807,11 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                       <li className="flex justify-between gap-2"><span>مدى</span><span className="tabular-nums font-medium text-stone-800 dark:text-teal-400">{formatCurrency(row.mada)}</span></li>
                       <li className="flex justify-between gap-2"><span>فيزا</span><span className="tabular-nums font-medium text-stone-800 dark:text-teal-400">{formatCurrency(row.visa)}</span></li>
                       <li className="flex justify-between gap-2"><span>ماستر كارد</span><span className="tabular-nums font-medium text-stone-800 dark:text-teal-400">{formatCurrency(row.mastercard)}</span></li>
+                      <li className="flex justify-between gap-2"><span>أمريكان إكسبريس</span><span className="tabular-nums font-medium text-stone-800 dark:text-teal-400">{formatCurrency(row.amex ?? 0)}</span></li>
                       <li className="flex justify-between gap-2"><span>تحويل بنكي <span className="text-stone-500 dark:text-slate-500 text-[10px]">(للعرض فقط)</span></span><span className="tabular-nums font-medium text-stone-800 dark:text-teal-400">{formatCurrency(row.bankTransfer)}</span></li>
-                      <li className="flex justify-between gap-2 border-t border-stone-300 dark:border-white/10 pt-1.5 font-medium"><span>بنك نزيل (مدى+فيزا+ماستر)</span><span className="tabular-nums font-bold text-stone-900 dark:text-teal-300">{formatCurrency(bankTotal)}</span></li>
+                      <li className="flex justify-between gap-2 border-t border-stone-300 dark:border-white/[0.06] pt-1.5 font-medium"><span>بنك نزيل (مدى+فيزا+ماستر+أمريكان إكسبريس)</span><span className="tabular-nums font-bold text-stone-900 dark:text-teal-300">{formatCurrency(bankTotal)}</span></li>
                       <li className="flex justify-between gap-2"><span>اجمالى الموازنه</span><span className="tabular-nums font-medium text-stone-800 dark:text-teal-400">− {formatCurrency(programBalanceBank)}</span></li>
-                      <li className="flex justify-between gap-2 border-t-2 border-stone-400 dark:border-teal-500/30 pt-2 font-bold text-stone-900 dark:text-teal-300"><span>انحراف البنك</span><span className="tabular-nums">{bankVariance > 0 ? '+' : ''}{formatCurrency(bankVariance)}</span></li>
+                      <li className="flex justify-between gap-2 border-t-2 border-stone-400 dark:border-teal-500/18 pt-2 font-bold text-stone-900 dark:text-teal-300"><span>انحراف البنك</span><span className="tabular-nums">{bankVariance > 0 ? '+' : ''}{formatCurrency(bankVariance)}</span></li>
                     </ul>
                     <p className="text-xs text-stone-600 dark:text-slate-400 pt-1">
                       {bankVariance > 0 ? 'زيادة: بنك نزيل أكبر من اجمالى الموازنه المدخل.' : bankVariance < 0 ? 'عجز: اجمالى الموازنه أكبر من بنك نزيل.' : 'لا يوجد انحراف.'}
@@ -1791,12 +1819,12 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                   </>
                 )}
                 {showSwapAlert && (
-                  <div className="mt-3 p-3 rounded-xl border-2 border-stone-400 dark:border-teal-500/30 bg-stone-100 dark:bg-teal-900/20 text-stone-800 dark:text-teal-200 text-sm font-medium">
+                  <div className="mt-3 p-3 rounded-xl border-2 border-stone-400 dark:border-teal-500/18 bg-stone-100 dark:bg-teal-900/20 text-stone-800 dark:text-teal-200 text-sm font-medium">
                     تنبيه: قد تكون سندات بقيمة <strong>{swapAmount.toLocaleString('ar-SA', { minimumFractionDigits: 2 })}</strong> ريال دخلت في خانة خاطئة (نقداً ↔ شبكة). راجع تحويل المبلغ بين الكاش وبنك نزيل.
                   </div>
                 )}
               </div>
-              <div className="p-3 border-t-2 border-stone-400 dark:border-white/10">
+              <div className="p-3 border-t-2 border-stone-400 dark:border-white/[0.06]">
                 <button
                   type="button"
                   onClick={() => setVarianceExplanationModal(null)}
@@ -1821,8 +1849,8 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
         }
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="shift-notes-title" onClick={() => setShiftNotesModal(null)}>
-            <div className="rounded-2xl border-2 border-stone-300 dark:border-teal-500/30 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-[95vw] sm:max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
-              <h2 id="shift-notes-title" className="text-base font-bold text-stone-900 dark:text-teal-400 p-4 pb-2 border-b-2 border-stone-400 dark:border-white/10">
+            <div className="rounded-2xl border-2 border-stone-300 dark:border-teal-500/18 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-[95vw] sm:max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col font-cairo cursor-auto" onClick={(e) => e.stopPropagation()}>
+              <h2 id="shift-notes-title" className="text-base font-bold text-stone-900 dark:text-teal-400 p-4 pb-2 border-b-2 border-stone-400 dark:border-white/[0.06]">
                 ملاحظات الشيفت
               </h2>
               <div className="flex-1 min-h-0 overflow-hidden p-4">
@@ -1832,7 +1860,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                     value={shiftNotesDraft}
                     onChange={(e) => setShiftNotesDraft(e.target.value)}
                     placeholder="اكتب ملاحظاتك قبل إغلاق الشيفت..."
-                    className="w-full h-40 sm:h-48 px-3 py-2 rounded-xl border-2 border-stone-400 dark:border-white/10 bg-white dark:bg-slate-900/70 text-stone-900 dark:text-slate-200 text-sm font-cairo placeholder:text-stone-500 dark:placeholder:text-slate-500 focus:border-teal-500/50 focus:ring-2 focus:ring-teal-500/20 focus:outline-none resize-none"
+                    className="w-full h-40 sm:h-48 px-3 py-2 rounded-xl border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-stone-900 dark:text-slate-200 text-sm font-cairo placeholder:text-stone-500 dark:placeholder:text-slate-500 focus:border-teal-500/50 focus:ring-2 focus:ring-teal-500/20 focus:outline-none resize-none"
                     autoFocus
                   />
                 ) : (
@@ -1841,7 +1869,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                   </div>
                 )}
               </div>
-              <div className="p-3 border-t-2 border-stone-400 dark:border-white/10 flex gap-2">
+              <div className="p-3 border-t-2 border-stone-400 dark:border-white/[0.06] flex gap-2">
                 {isEdit ? (
                   <>
                     <button type="button" onClick={handleSaveNotes} className="flex-1 py-2.5 rounded-xl text-sm font-bold bg-teal-600 hover:bg-teal-500 text-white transition">
@@ -1865,10 +1893,10 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
       {closeConfirmVariance && (() => {
         const { cashVar, bankVar } = closeConfirmVariance
         const cashTip = cashVar !== 0 ? (cashVar > 0 ? 'زيادة في صندوق الكاش — راجع الرصيد الفعلي' : 'عجز في صندوق الكاش — راجع الكاش والرصيد والمصروف') : ''
-        const bankTip = bankVar !== 0 ? (bankVar > 0 ? 'زيادة في البنك — راجع إدخالات مدى/فيزا/ماستر أو اجمالى الموازنه' : 'عجز في البنك — راجع بنك نزيل أو اجمالى الموازنه') : ''
+        const bankTip = bankVar !== 0 ? (bankVar > 0 ? 'زيادة في البنك — راجع إدخالات مدى/فيزا/ماستر/أمريكان إكسبريس أو اجمالى الموازنه' : 'عجز في البنك — راجع بنك نزيل أو اجمالى الموازنه') : ''
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="close-variance-title">
-            <div className="rounded-2xl border-2 border-teal-300 dark:border-teal-500/30 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+            <div className="rounded-2xl border-2 border-teal-300 dark:border-teal-500/18 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
               <h2 id="close-variance-title" className="text-lg font-bold text-stone-900 dark:text-teal-400 mb-3">
                 تنبيه: يوجد انحراف
               </h2>
@@ -1912,7 +1940,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
 
       {transferConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="transfer-confirm-title">
-          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/[0.06] bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
             <h2 id="transfer-confirm-title" className="text-lg font-bold text-stone-800 dark:text-teal-400 mb-3">
               ترحيل إلى {transferFieldLabel(transferConfirm.field)}
             </h2>
@@ -1941,7 +1969,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
 
       {bankTransferConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="bank-transfer-confirm-title">
-          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/[0.06] bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
             <h2 id="bank-transfer-confirm-title" className="text-lg font-bold text-stone-800 dark:text-teal-400 mb-3">
               ترحيل العمليات البنكية
             </h2>
@@ -1967,6 +1995,12 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                   <span className="tabular-nums">مرحّل <strong className="text-stone-800 dark:text-teal-400">{formatCurrency(bankTransferConfirm.mastercard)}</strong> — في الخانة <strong>{formatCurrency(bankTransferConfirm.currentMaster)}</strong></span>
                 </li>
               )}
+              {bankTransferConfirm.amex > 0 && (
+                <li className="flex justify-between gap-2">
+                  <span>أمريكان إكسبريس:</span>
+                  <span className="tabular-nums">مرحّل <strong className="text-stone-800 dark:text-teal-400">{formatCurrency(bankTransferConfirm.amex)}</strong> — في الخانة <strong>{formatCurrency(bankTransferConfirm.currentAmex)}</strong></span>
+                </li>
+              )}
             </ul>
             <div className="flex gap-3">
               <button
@@ -1990,7 +2024,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
 
       {bankEditConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="bank-edit-confirm-title">
-          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/[0.06] bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
             <h2 id="bank-edit-confirm-title" className="text-lg font-bold text-stone-800 dark:text-teal-400 mb-3">
               تعديل خانة {transferFieldLabel(bankEditConfirm.field as TransferField)}
             </h2>
@@ -2019,7 +2053,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
 
       {clearRowConfirmId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="clear-row-confirm-title">
-          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/[0.06] bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
             <h2 id="clear-row-confirm-title" className="text-lg font-bold text-stone-800 dark:text-teal-400 mb-3">
               إفراغ الصف
             </h2>
@@ -2055,7 +2089,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
           onClick={() => setExpenseModal(null)}
         >
           <div
-            className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-lg w-full max-h-[85vh] flex flex-col font-cairo cursor-auto"
+            className="rounded-2xl border border-stone-300 dark:border-white/[0.06] bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-lg w-full max-h-[85vh] flex flex-col font-cairo cursor-auto"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !expenseModal.readOnly) {
@@ -2157,7 +2191,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                               placeholder={hasAmount ? 'الوصف إلزامي' : 'الوصف'}
                               title={hasAmount ? 'الوصف إلزامي عند وجود مبلغ' : undefined}
                               aria-required={hasAmount}
-                              className={`flex-1 px-3 py-2 rounded-lg bg-stone-50 dark:bg-slate-900/80 border text-stone-900 dark:text-white text-sm font-cairo placeholder:text-stone-500 dark:placeholder:text-slate-500 focus:border-teal-500/50 dark:focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/25 dark:focus:ring-teal-500/25 ${needsDesc ? 'border-teal-500 dark:border-teal-500/50 ring-1 ring-teal-500/25' : 'border-stone-300 dark:border-teal-500/30'} ${isPulsing ? 'expense-description-pulse' : ''}`}
+                              className={`flex-1 px-3 py-2 rounded-lg bg-stone-50 dark:bg-slate-900/80 border text-stone-900 dark:text-white text-sm font-cairo placeholder:text-stone-500 dark:placeholder:text-slate-500 focus:border-teal-500/50 dark:focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/25 dark:focus:ring-teal-500/16 ${needsDesc ? 'border-teal-500 dark:border-teal-500/32 ring-1 ring-teal-500/25' : 'border-stone-300 dark:border-teal-500/18'} ${isPulsing ? 'expense-description-pulse' : ''}`}
                             />
                           )
                         })()}
@@ -2181,7 +2215,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                             }
                           }}
                           placeholder="مبلغ"
-                          className="cashbox-input w-24 px-3 py-2 rounded-lg bg-stone-50 dark:bg-slate-900/80 border border-stone-300 dark:border-teal-500/30 text-stone-900 dark:text-white text-sm text-center focus:border-teal-500/50 dark:focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/25 dark:focus:ring-teal-500/25"
+                          className="cashbox-input w-24 px-3 py-2 rounded-lg bg-stone-50 dark:bg-slate-900/80 border border-stone-300 dark:border-teal-500/18 text-stone-900 dark:text-white text-sm text-center focus:border-teal-500/50 dark:focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/25 dark:focus:ring-teal-500/16"
                         />
                         <button
                           type="button"
@@ -2248,7 +2282,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
 
       {deleteCarriedConfirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-carried-dialog-title">
-          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/[0.06] bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
             <h2 id="delete-carried-dialog-title" className="text-lg font-bold text-stone-800 dark:text-teal-400 mb-3">
               {deleteCarriedConfirm.step === 'confirm' ? 'حذف بند مرحّل' : 'كود الأدمن'}
             </h2>
@@ -2290,7 +2324,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                       if (e.key === 'Escape') { setDeleteCarriedConfirm(null); setAdminCodeInput(''); setAdminCodeError(false) }
                     }}
                     placeholder="كود الأدمن"
-                    className={`w-full pl-3 pr-10 py-2 rounded-xl bg-stone-50 dark:bg-slate-900 border text-stone-900 dark:text-white text-sm font-cairo placeholder:text-stone-500 dark:placeholder:text-slate-400 focus:ring-1 focus:ring-teal-500/25 focus:border-teal-500/50 dark:focus:border-teal-500/50 ${adminCodeError ? 'border-red-500 dark:border-red-400' : 'border-stone-300 dark:border-white/10'}`}
+                    className={`w-full pl-3 pr-10 py-2 rounded-xl bg-stone-50 dark:bg-slate-900 border text-stone-900 dark:text-white text-sm font-cairo placeholder:text-stone-500 dark:placeholder:text-slate-400 focus:ring-1 focus:ring-teal-500/25 focus:border-teal-500/50 dark:focus:border-teal-500/50 ${adminCodeError ? 'border-red-500 dark:border-red-400' : 'border-stone-300 dark:border-white/[0.06]'}`}
                     autoFocus
                   />
                   <button
@@ -2318,7 +2352,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
 
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
-          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/[0.06] bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
             <h2 id="delete-dialog-title" className="text-lg font-bold text-stone-800 dark:text-teal-400 mb-3">
               {deleteConfirm.step === 'confirm' ? 'حذف الصف' : 'كود الأدمن'}
             </h2>
@@ -2360,7 +2394,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                       if (e.key === 'Escape') { setDeleteConfirm(null); setAdminCodeInput(''); setAdminCodeError(false) }
                     }}
                     placeholder="كود الأدمن"
-                    className={`w-full pl-3 pr-10 py-2 rounded-xl bg-stone-50 dark:bg-slate-900 border text-stone-900 dark:text-white text-sm font-cairo placeholder:text-stone-500 dark:placeholder:text-slate-400 focus:ring-1 focus:ring-teal-500/25 focus:border-teal-500/50 dark:focus:border-teal-500/50 ${adminCodeError ? 'border-red-500 dark:border-red-400' : 'border-stone-300 dark:border-white/10'}`}
+                    className={`w-full pl-3 pr-10 py-2 rounded-xl bg-stone-50 dark:bg-slate-900 border text-stone-900 dark:text-white text-sm font-cairo placeholder:text-stone-500 dark:placeholder:text-slate-400 focus:ring-1 focus:ring-teal-500/25 focus:border-teal-500/50 dark:focus:border-teal-500/50 ${adminCodeError ? 'border-red-500 dark:border-red-400' : 'border-stone-300 dark:border-white/[0.06]'}`}
                     autoFocus
                   />
                   <button
@@ -2407,7 +2441,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
 
       {deleteAllClosedConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-all-dialog-title">
-          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/[0.06] bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
             <h2 id="delete-all-dialog-title" className="text-lg font-bold text-stone-800 dark:text-teal-400 mb-3">
               {deleteAllClosedConfirm.step === 'confirm' ? 'حذف كل التقفيلات المغلقة' : 'كود الأدمن'}
             </h2>
@@ -2449,7 +2483,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                       if (e.key === 'Escape') { setDeleteAllClosedConfirm(null); setAdminCodeInput(''); setAdminCodeError(false) }
                     }}
                     placeholder="كود الأدمن"
-                    className={`w-full pl-3 pr-10 py-2 rounded-xl bg-stone-50 dark:bg-slate-900 border text-stone-900 dark:text-white text-sm font-cairo placeholder:text-stone-500 dark:placeholder:text-slate-400 focus:ring-1 focus:ring-teal-500/25 focus:border-teal-500/50 dark:focus:border-teal-500/50 ${adminCodeError ? 'border-red-500 dark:border-red-400' : 'border-stone-300 dark:border-white/10'}`}
+                    className={`w-full pl-3 pr-10 py-2 rounded-xl bg-stone-50 dark:bg-slate-900 border text-stone-900 dark:text-white text-sm font-cairo placeholder:text-stone-500 dark:placeholder:text-slate-400 focus:ring-1 focus:ring-teal-500/25 focus:border-teal-500/50 dark:focus:border-teal-500/50 ${adminCodeError ? 'border-red-500 dark:border-red-400' : 'border-stone-300 dark:border-white/[0.06]'}`}
                     autoFocus
                   />
                   <button
@@ -2496,7 +2530,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
 
       {switchBranchConfirm && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="switch-branch-dialog-title">
-          <div className="rounded-2xl border border-stone-300 dark:border-white/10 bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
+          <div className="rounded-2xl border border-stone-300 dark:border-white/[0.06] bg-stone-50 dark:bg-slate-800 shadow-2xl max-w-md w-full p-5 font-cairo">
             <h2 id="switch-branch-dialog-title" className="text-lg font-bold text-stone-800 dark:text-teal-400 mb-3">
               تغيير الفرع
             </h2>
@@ -2529,4 +2563,4 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
   )
 }
 
-const NUM_FIELDS = ['cash', 'sentToTreasury', 'expenseCompensation', 'expenses', 'mada', 'visa', 'mastercard', 'bankTransfer', 'programBalanceCash', 'programBalanceBank'] as const
+const NUM_FIELDS = ['cash', 'sentToTreasury', 'expenseCompensation', 'expenses', 'mada', 'visa', 'mastercard', 'amex', 'bankTransfer', 'programBalanceCash', 'programBalanceBank'] as const

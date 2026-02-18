@@ -45,7 +45,7 @@ interface ClosureRowProps {
   onOpenShiftNotesModal?: (row: Row, mode: 'edit' | 'view') => void
 }
 
-const NUM_KEYS: (keyof Row)[] = ['cash', 'sentToTreasury', 'expenseCompensation', 'expenses', 'programBalanceCash', 'mada', 'visa', 'mastercard', 'bankTransfer', 'programBalanceBank']
+const NUM_KEYS: (keyof Row)[] = ['cash', 'sentToTreasury', 'expenseCompensation', 'expenses', 'programBalanceCash', 'mada', 'visa', 'mastercard', 'amex', 'bankTransfer', 'programBalanceBank']
 
 /** إطار خفيف لتجميع خانات الكاش أو البنك في الصف — نفس استدارة الرؤوس (xl) للتماثل */
 const FRAME = 'border-stone-200 dark:border-teal-500/20'
@@ -85,6 +85,7 @@ export function ClosureRowComp({
     row.mada,
     row.visa,
     row.mastercard,
+    row.amex,
     row.bankTransfer,
     row.programBalanceBank,
   ])
@@ -169,7 +170,7 @@ export function ClosureRowComp({
   const renderNum = (field: keyof Row, opts?: { tabIndex?: number; disabled?: boolean }) => {
     const v = (row[field] as number) ?? 0
     const isBankWithDetails =
-      (field === 'mada' || field === 'visa' || field === 'mastercard' || field === 'bankTransfer') &&
+      (field === 'mada' || field === 'visa' || field === 'mastercard' || field === 'amex' || field === 'bankTransfer') &&
       lastExcelDetails?.[field]?.length > 0 &&
       onShowExcelDetails
     // أثناء الإغلاق أو فترة التراجع: عرض فقط — والمصروفات قابلة للنقر لعرض التفاصيل
@@ -179,7 +180,7 @@ export function ClosureRowComp({
           <button
             type="button"
             onClick={() => onOpenExpenseDetails(row.id)}
-            className="block w-full py-1 text-sm text-stone-800 dark:text-slate-300 font-cairo text-center hover:text-stone-900 hover:bg-stone-200 dark:hover:text-teal-400 dark:hover:bg-white/[0.06] rounded-xl transition cursor-pointer"
+            className={`block w-full py-1 text-sm font-cairo text-center rounded-xl transition cursor-pointer ${isClosed ? 'text-red-500 dark:text-red-300 hover:text-red-600 dark:hover:text-red-200 hover:bg-red-50/80 dark:hover:bg-red-500/10' : 'text-stone-800 dark:text-slate-300 hover:text-stone-900 hover:bg-stone-200 dark:hover:text-teal-400 dark:hover:bg-white/[0.06]'}`}
             title="عرض تفاصيل المصروفات"
           >
             {v === 0 ? '—' : formatCurrency(v)}
@@ -189,7 +190,7 @@ export function ClosureRowComp({
       if (isBankWithDetails && onShowExcelDetails) {
         return (
           <div className="flex items-center gap-1 w-full">
-            <span className="flex-1 min-w-0 py-1 text-sm text-stone-800 dark:text-slate-300 font-cairo text-center tabular-nums">{v === 0 ? '—' : formatCurrency(v)}</span>
+            <span className={`flex-1 min-w-0 py-1 text-sm font-cairo text-center tabular-nums ${isClosed ? 'text-red-500 dark:text-red-300' : 'text-stone-800 dark:text-slate-300'}`}>{v === 0 ? '—' : formatCurrency(v)}</span>
             <button
               type="button"
               onClick={() => onShowExcelDetails(field, row.id)}
@@ -202,13 +203,13 @@ export function ClosureRowComp({
           </div>
         )
       }
-      return <span className="block py-1 text-sm text-stone-800 dark:text-slate-300 font-cairo text-center">{v === 0 ? '—' : formatCurrency(v)}</span>
+      return <span className={`block py-1 text-sm font-cairo text-center tabular-nums ${isClosed ? 'text-red-500 dark:text-red-300' : 'text-stone-800 dark:text-slate-300'}`}>{v === 0 ? '—' : formatCurrency(v)}</span>
     }
     // الصف مفتوح: مدى/فيزا/ماستر/تحويل — دائماً حقل قابل للتعديل اليدوي؛ إن وُجدت تفاصيل إكسل نضيف زر سجل التغيير
     const isExpenses = field === 'expenses'
     const disabled = opts?.disabled ?? (!alwaysEnabledFields.includes(field) && !programBalanceFilled)
     const tabIndex = opts?.tabIndex ?? (field === 'programBalanceCash' && isFirstActive ? 0 : disabled ? -1 : 1)
-    const needsConfirmEdit = isBankWithDetails && onRequestConfirmBankEdit && ['mada', 'visa', 'mastercard', 'bankTransfer'].includes(field)
+    const needsConfirmEdit = isBankWithDetails && onRequestConfirmBankEdit && ['mada', 'visa', 'mastercard', 'amex', 'bankTransfer'].includes(field)
     const displayVal = needsConfirmEdit && pendingBankEdit?.field === field
       ? (pendingBankEdit.value === 0 ? '' : String(pendingBankEdit.value))
       : (v === 0 ? '' : String(v))
@@ -248,7 +249,7 @@ export function ClosureRowComp({
         tabIndex={tabIndex}
         disabled={disabled}
         title={disabled ? 'لا يمكن الإدخال قبل إدخال رصيد البرنامج كاش' : (field === 'expenseCompensation' ? 'يجب أن يكون مساوياً أو أقل من مبلغ المصروفات' : undefined)}
-        className="cashbox-input w-full min-h-[1.6rem] px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900/70 border-2 border-stone-400 dark:border-white/[0.06] text-stone-900 dark:text-white text-sm font-cairo text-center focus:border-teal-500/50 focus:ring-2 focus:ring-teal-500/20 dark:focus:border-teal-500/40 dark:focus:ring-teal-500/20 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+        className="cashbox-input w-full min-h-[1.6rem] px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900/70 border-2 border-stone-400 dark:border-white/[0.04] text-stone-900 dark:text-white text-sm font-cairo text-center focus:border-teal-500/50 focus:ring-2 focus:ring-teal-500/20 dark:focus:border-teal-500/28 dark:focus:ring-teal-500/14 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
       />
     )
     if (disabled && onLockedFieldClick) {
@@ -304,42 +305,60 @@ export function ClosureRowComp({
   const stickyLabelClass = isStickyRows ? 'sticky top-[6.5rem] sm:top-[7rem] z-[9] bg-[#ebe6df]/98 dark:bg-slate-800/98 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] border-b-2 border-stone-500 dark:border-teal-500/20' : ''
   const stickyDataClass = isStickyRows ? 'sticky top-[8.75rem] sm:top-[9.25rem] z-[9] bg-white dark:bg-slate-800/95 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] border-b-2 border-stone-500 dark:border-teal-500/20' : ''
 
-  /* خلفية صف البيانات — نضعها على الخانات الوسطى فقط؛ تحديد وم وإجراءات شفافة */
+  /* عند الإغلاق: بدون حدود داخلية أو صندوق — مثل باقي الخانات. عند النشاط: صندوق إدخال */
+  const fieldBoxClass = isClosed
+    ? 'min-h-[1.6rem] py-1.5 px-2 border-0 rounded-none bg-transparent text-red-500 dark:text-red-300 text-sm font-cairo text-center tabular-nums'
+    : 'min-h-[1.6rem] py-1.5 px-2 rounded-lg border-2 border-stone-400 dark:border-white/[0.04] bg-white dark:bg-slate-900/70 text-stone-900 dark:text-white text-sm font-cairo text-center tabular-nums'
+
+  /* خلفية صف البيانات — المغلق = كتلة رمادية موحدة، النشط = دافئ/تركواز */
   const rowBgClass =
     isUndoPeriod
       ? 'bg-sky-100 dark:bg-sky-500/10'
       : isClosed
-        ? rowIndex % 2 === 0
-          ? 'bg-[#f2ede5] dark:bg-slate-800/40'
-          : 'bg-[#ebe6df] dark:bg-slate-800/25'
+        ? 'bg-slate-100 dark:bg-slate-800/50'
         : rowIndex % 2 === 0
           ? 'bg-[#f8f4ee] dark:bg-slate-800/30 hover:bg-[#f2ede5] dark:hover:bg-slate-800/40'
           : 'bg-[#f2ede5] dark:bg-slate-800/20 hover:bg-[#ebe6df] dark:hover:bg-slate-800/35'
 
   return (
     <>
-      {/* صف التسمية: اسم الموظف + التاريخ — خلفية شفافة + لمسة تركواز يسار فقط */}
-      <tr data-row-id={row.id} className={`bg-transparent border-l-4 border-l-teal-500 dark:border-l-teal-500/40 border-b-2 border-stone-500 dark:border-teal-500/20 ${isStickyRows ? 'sticky-label-row' : ''}`}>
+      {/* صف التسمية: اسم الموظف + التاريخ — المغلق أخف من النشط (حد أيسر ونص أفتح) */}
+      <tr
+        data-row-id={row.id}
+        {...(isClosed ? { 'data-row-closed': 'true' } : {})}
+        className={`bg-transparent border-b-2 border-stone-500 dark:border-teal-500/20 ${isStickyRows ? 'sticky-label-row' : ''} ${
+          isClosed
+            ? 'border-l-2 border-l-stone-400 dark:border-l-slate-600'
+            : 'border-l-4 border-l-teal-500 dark:border-l-teal-500/40'
+        }`}
+      >
         <td
           colSpan={16}
           className={`py-0.5 px-2 sm:px-3 align-middle text-[10px] sm:text-[11px] font-semibold font-cairo whitespace-nowrap ${stickyLabelClass}`}
           style={{ lineHeight: 1.2, verticalAlign: 'middle', paddingInlineStart: '4%' }}
         >
-          <span className="inline-flex items-center gap-1.5 flex-wrap rounded-lg border-2 border-stone-400 dark:border-teal-500/30 bg-stone-50 dark:bg-teal-500/10 px-2 py-0.5 shadow-sm dark:shadow-[0_2px_6px_rgba(20,184,166,0.08)]">
-            {displayName === 'أكثر من موظف' && onShowEmployeeNames ? (
+          <div className="flex items-center w-full gap-2">
+            <span
+              className={`inline-flex items-center gap-1.5 flex-wrap rounded-lg border px-2 py-0.5 flex-1 min-w-0 ${
+                isClosed
+                  ? 'border-2 border-red-300 dark:border-red-500/40 bg-slate-200/80 dark:bg-slate-700/40 shadow-none'
+                  : 'border-2 border-stone-400 dark:border-teal-500/18 bg-stone-50 dark:bg-teal-500/10 shadow-sm dark:shadow-accent-soft'
+              }`}
+            >
+              {displayName === 'أكثر من موظف' && onShowEmployeeNames ? (
               <button
                 type="button"
                 onClick={onShowEmployeeNames}
-                className="text-stone-800 dark:text-teal-400 hover:text-stone-900 dark:hover:text-teal-300 underline underline-offset-1 cursor-pointer transition-colors font-semibold"
+                className={isClosed ? 'text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 underline underline-offset-1 cursor-pointer transition-colors font-semibold' : 'text-stone-800 dark:text-teal-400 hover:text-stone-900 dark:hover:text-teal-300 underline underline-offset-1 cursor-pointer transition-colors font-semibold'}
                 title="عرض أسماء الموظفين"
               >
                 أكثر من موظف
               </button>
             ) : (
-              <span className="font-semibold text-stone-900 dark:text-teal-300">{displayName}</span>
+              <span className={`font-semibold ${isClosed ? 'text-red-600 dark:text-red-400' : 'text-stone-900 dark:text-teal-300'}`}>{displayName}</span>
             )}
-            <span className="text-stone-500 dark:text-slate-400">·</span>
-            <span className="tabular-nums font-medium text-stone-600 dark:text-slate-400">{labelDateTime}</span>
+            <span className={isClosed ? 'text-red-500 dark:text-red-400/90' : 'text-stone-500 dark:text-slate-400'}>·</span>
+            <span className={`tabular-nums font-medium ${isClosed ? 'text-red-600 dark:text-red-400' : 'text-stone-600 dark:text-slate-400'}`}>{labelDateTime}</span>
             {onOpenShiftNotesModal && (
               <>
                 <span className="text-stone-500 dark:text-slate-400">·</span>
@@ -348,7 +367,7 @@ export function ClosureRowComp({
                     <button
                       type="button"
                       onClick={() => onOpenShiftNotesModal(row, 'edit')}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold font-cairo bg-teal-500/20 dark:bg-teal-500/25 text-teal-700 dark:text-teal-300 border border-teal-400/50 dark:border-teal-500/40 hover:bg-teal-500/30 dark:hover:bg-teal-500/35 transition-colors"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-semibold font-cairo bg-teal-500/20 dark:bg-teal-500/25 text-teal-700 dark:text-white border border-teal-400/50 dark:border-teal-500/28 hover:bg-teal-500/30 dark:hover:bg-teal-500/35 transition-colors"
                       title="تسجيل ملاحظات الشيفت"
                     >
                       ملاحظات الشيفت
@@ -369,12 +388,23 @@ export function ClosureRowComp({
                 </span>
               </>
             )}
-          </span>
+            </span>
+            {isClosed && (
+              <span className="flex items-center justify-center shrink-0 text-red-500 dark:text-red-300" title="صف مغلق" aria-hidden>
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+              </span>
+            )}
+            <span className={isClosed ? 'flex-1 min-w-0' : 'hidden'} aria-hidden />
+          </div>
         </td>
       </tr>
-      {/* صف البيانات — خلفية الصف على الخانات الوسطى فقط؛ تحديد وم وإجراءات شفافة */}
+      {/* صف البيانات — المغلق أخف (opacity) للتمييز عن الصف النشط */}
       <tr
         data-row-id={row.id}
+        {...(isClosed ? { 'data-row-closed': 'true' } : {})}
         className={`bg-transparent ${
           isUndoPeriod
             ? 'animate-pulse border-l-2 border-r-2 border-l-sky-400/50 border-r-sky-400/50 border-b-2 border-stone-500 dark:border-teal-500/20'
@@ -392,7 +422,7 @@ export function ClosureRowComp({
               className={`inline-flex items-center justify-center w-4 h-4 rounded-md border-2 transition-all ${
                 isSelected
                   ? 'border-teal-500 bg-teal-100 text-teal-600 ring-2 ring-teal-500/30 ring-offset-2 ring-offset-stone-50 dark:border-teal-500/60 dark:bg-teal-500/20 dark:text-teal-400 dark:ring-teal-500/30 dark:ring-offset-slate-800'
-                  : 'border-2 border-stone-500 dark:border-white/20 bg-stone-300 dark:bg-slate-800/60 text-stone-800 dark:text-slate-400 hover:border-teal-400 dark:hover:border-teal-500/40 hover:text-teal-600 dark:hover:text-teal-400/90 shadow-sm'
+                  : 'border-2 border-stone-500 dark:border-white/12 bg-stone-300 dark:bg-slate-800/60 text-stone-800 dark:text-slate-400 hover:border-teal-400 dark:hover:border-teal-500/40 hover:text-teal-600 dark:hover:text-teal-400/90 shadow-sm'
               }`}
             >
               {isSelected ? (
@@ -432,17 +462,17 @@ export function ClosureRowComp({
           <button
             type="button"
             onClick={() => onShowVarianceExplanation('cash', row)}
-            className={`block w-full min-h-[1.6rem] py-1.5 px-2 rounded-lg border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums transition cursor-pointer hover:bg-stone-50 dark:hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-teal-500/20 ${cashVariance === 0 ? 'cursor-default text-stone-500 dark:text-slate-500' : `${cashVarianceColor}`}`}
+            className={`block w-full ${fieldBoxClass} transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 ${!isClosed ? 'hover:bg-stone-50 dark:hover:bg-white/[0.06]' : ''} ${cashVariance === 0 ? 'cursor-default text-stone-500 dark:text-slate-500' : cashVarianceColor}`}
             title={cashVariance === 0 ? undefined : 'شرح سبب انحراف الكاش'}
             disabled={cashVariance === 0}
           >
             {cashVariance === 0 ? '—' : formatCurrency(cashVariance)}
           </button>
         ) : (
-          <span className={`block w-full min-h-[1.6rem] py-1.5 px-2 rounded-lg border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums ${cashVariance === 0 ? 'text-stone-500 dark:text-slate-500' : cashVarianceColor}`}>{cashVariance === 0 ? '—' : formatCurrency(cashVariance)}</span>
+          <span className={`block w-full ${fieldBoxClass} ${cashVariance === 0 ? 'text-stone-500 dark:text-slate-500' : cashVarianceColor}`}>{cashVariance === 0 ? '—' : formatCurrency(cashVariance)}</span>
         )}
       </td>
-      {NUM_KEYS.slice(5, 9).map((k) => (
+      {NUM_KEYS.slice(5, 10).map((k, idx) => (
         <td
           key={k}
           data-transfer-target
@@ -454,9 +484,9 @@ export function ClosureRowComp({
         </td>
       ))}
       <td className={`p-1 text-center align-middle ${rowBgClass} ${stickyDataClass} ${FRAME_MID}`}>
-        <span className="block w-full min-h-[1.6rem] py-1.5 px-2 rounded-lg border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums text-stone-800 dark:text-slate-200 font-medium">
+        <span className={`block w-full ${fieldBoxClass} font-medium`}>
           {(() => {
-            const total = row.mada + row.visa + row.mastercard
+            const total = row.mada + row.visa + row.mastercard + (row.amex ?? 0)
             return total === 0 ? '—' : formatCurrency(total)
           })()}
         </span>
@@ -474,21 +504,21 @@ export function ClosureRowComp({
           <button
             type="button"
             onClick={() => onShowVarianceExplanation('bank', row)}
-            className={`block w-full min-h-[1.6rem] py-1.5 px-2 rounded-lg border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums transition cursor-pointer hover:bg-stone-50 dark:hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-teal-500/20 ${bankVariance === 0 ? 'cursor-default text-stone-500 dark:text-slate-500' : `${bankVarianceColor}`}`}
+            className={`block w-full ${fieldBoxClass} transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-teal-500/20 ${!isClosed ? 'hover:bg-stone-50 dark:hover:bg-white/[0.06]' : ''} ${bankVariance === 0 ? 'cursor-default text-stone-500 dark:text-slate-500' : bankVarianceColor}`}
             title={bankVariance === 0 ? undefined : 'شرح سبب انحراف البنك'}
             disabled={bankVariance === 0}
           >
             {bankVariance === 0 ? '—' : formatCurrency(bankVariance)}
           </button>
         ) : (
-          <span className={`block w-full min-h-[1.6rem] py-1.5 px-2 rounded-lg border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums ${bankVariance === 0 ? 'text-stone-500 dark:text-slate-500' : bankVarianceColor}`}>{bankVariance === 0 ? '—' : formatCurrency(bankVariance)}</span>
+          <span className={`block w-full ${fieldBoxClass} ${bankVariance === 0 ? 'text-stone-500 dark:text-slate-500' : bankVarianceColor}`}>{bankVariance === 0 ? '—' : formatCurrency(bankVariance)}</span>
         )}
       </td>
       <td className={`px-0.5 py-0.5 text-center align-middle overflow-hidden min-w-0 bg-transparent ${stickyDataClass}`}>
         {isClosed ? (
           <div className="flex flex-row items-center justify-center gap-0.5 flex-wrap min-w-0 w-full">
-            <span className="inline-flex items-center gap-0.5 rounded-full px-1 py-0.5 bg-emerald-100 dark:bg-emerald-500/15 border border-emerald-300 dark:border-emerald-500/25 text-[8px] font-medium text-emerald-700 dark:text-emerald-400/95 font-cairo whitespace-nowrap shrink-0">
-              <svg className="w-2 h-2 text-emerald-600 dark:text-emerald-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <span className="inline-flex items-center gap-0.5 rounded-full px-1 py-0.5 bg-emerald-100 dark:bg-emerald-500/15 border border-emerald-300 dark:border-emerald-500/25 text-[8px] font-medium text-emerald-700 dark:text-white font-cairo whitespace-nowrap shrink-0">
+              <svg className="w-2 h-2 text-emerald-600 dark:text-white shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 6L9 17l-5-5" />
               </svg>
               تم الإغلاق
@@ -532,12 +562,12 @@ export function ClosureRowComp({
               type="button"
               onClick={() => onClearRow(row.id)}
               title="افراغ كل المدخلات في الصف النشط"
-              className="inline-flex items-center justify-center rounded px-0.5 py-0.5 bg-stone-200 dark:bg-teal-500/15 border border-stone-400 dark:border-teal-500/30 text-[8px] font-medium text-stone-800 dark:text-teal-400 font-cairo whitespace-nowrap w-full min-w-0 truncate hover:bg-stone-300 dark:hover:bg-teal-500/25 transition"
+              className="inline-flex items-center justify-center rounded px-0.5 py-0.5 bg-stone-200 dark:bg-teal-500/15 border border-stone-400 dark:border-teal-500/18 text-[8px] font-medium text-stone-800 dark:text-teal-400 font-cairo whitespace-nowrap w-full min-w-0 truncate hover:bg-stone-300 dark:hover:bg-teal-500/25 transition"
             >
               افراغ
             </button>
           ) : (
-            <span className="inline-flex items-center justify-center rounded px-0.5 py-0.5 bg-stone-200 dark:bg-teal-500/15 border border-stone-400 dark:border-teal-500/30 text-[8px] font-medium text-stone-800 dark:text-teal-400 font-cairo whitespace-nowrap w-full min-w-0 truncate">
+            <span className="inline-flex items-center justify-center rounded px-0.5 py-0.5 bg-stone-200 dark:bg-teal-500/15 border border-stone-400 dark:border-teal-500/18 text-[8px] font-medium text-stone-800 dark:text-teal-400 font-cairo whitespace-nowrap w-full min-w-0 truncate">
               الشفت الحالي
             </span>
           )

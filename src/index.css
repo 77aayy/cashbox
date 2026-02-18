@@ -2,6 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
+/* الوضع الداكن بينك بناتي — استبدال كامل التركواز ببينك بناتي.
+   تعيين المتغيرات على الجذر وعلى كل العناصر الداخلية لأن Tailwind يطبّق
+   dark: عبر :is(.dark *) وقد لا يورّث المتغير من الجذر في بعض المتصفحات. */
+/* سلم بينك بناتي (أقل احمراراً، أبرد) — 50 أفتح → 500 أكسنت → 900 أغمق */
+:root.dark.theme-pink,
+html.dark.theme-pink,
+html[data-theme="pink"].dark,
+.theme-pink.dark,
+.theme-pink.dark * {
+  --tw-teal-50: 253 245 250 !important;
+  --tw-teal-100: 252 235 245 !important;
+  --tw-teal-200: 250 212 235 !important;
+  --tw-teal-300: 248 195 222 !important;
+  --tw-teal-400: 243 175 210 !important;
+  --tw-teal-500: 238 160 200 !important;
+  --tw-teal-600: 220 135 180 !important;
+  --tw-teal-700: 195 110 158 !important;
+  --tw-teal-800: 168 88 135 !important;
+  --tw-teal-900: 140 70 112 !important;
+  --tw-emerald-50: 253 245 250 !important;
+  --tw-emerald-100: 252 235 245 !important;
+  --tw-emerald-200: 250 212 235 !important;
+  --tw-emerald-300: 248 195 222 !important;
+  --tw-emerald-400: 243 175 210 !important;
+  --tw-emerald-500: 238 160 200 !important;
+  --tw-emerald-600: 220 135 180 !important;
+  --tw-emerald-700: 195 110 158 !important;
+  --tw-emerald-800: 168 88 135 !important;
+  --tw-emerald-900: 140 70 112 !important;
+}
+
 * {
   box-sizing: border-box;
   outline: none;
@@ -24,7 +55,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* وضوح التركيز عند التنقل بالكيبورد — لون البراند (Turquoise #14b8a6) */
+/* وضوح التركيز عند التنقل بالكيبورد — تركواز أو بينك بناتي حسب الثيم */
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
@@ -33,6 +64,14 @@ textarea:focus-visible,
 [tabindex]:focus-visible {
   outline: 2px solid rgba(20, 184, 166, 0.7);
   outline-offset: 2px;
+}
+.theme-pink.dark button:focus-visible,
+.theme-pink.dark a:focus-visible,
+.theme-pink.dark input:focus-visible,
+.theme-pink.dark select:focus-visible,
+.theme-pink.dark textarea:focus-visible,
+.theme-pink.dark [tabindex]:focus-visible {
+  outline-color: rgba(238, 160, 200, 0.7);
 }
 
 /* مناطق آمنة للشاشات ذات النتوءات */
@@ -128,6 +167,20 @@ input[type="number"].cashbox-input {
     box-shadow: 0 0 0 12px rgba(20, 184, 166, 0), 0 0 0 24px rgba(245, 158, 11, 0);
   }
 }
+.theme-pink.dark .program-balance-pulse-cell {
+  animation-name: program-balance-pulse-lines-pink;
+}
+@keyframes program-balance-pulse-lines-pink {
+  0% {
+    box-shadow: 0 0 0 0 rgba(238, 160, 200, 0.45), 0 0 0 0 rgba(245, 158, 11, 0.25);
+  }
+  40% {
+    box-shadow: 0 0 0 6px rgba(238, 160, 200, 0.2), 0 0 0 12px rgba(245, 158, 11, 0.08);
+  }
+  100% {
+    box-shadow: 0 0 0 12px rgba(238, 160, 200, 0), 0 0 0 24px rgba(245, 158, 11, 0);
+  }
+}
 
 .program-balance-pulse-cell {
   animation: program-balance-pulse-lines 1s ease-out 1;
@@ -183,9 +236,49 @@ input[type="number"].cashbox-input {
     box-shadow: none;
   }
 }
+@keyframes transfer-land-pulse-pink {
+  0% {
+    box-shadow: 0 0 0 0 rgba(238, 160, 200, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(238, 160, 200, 0);
+  }
+  100% {
+    box-shadow: none;
+  }
+}
+.theme-pink.dark .transfer-land-pulse {
+  animation-name: transfer-land-pulse-pink;
+}
 .transfer-land-pulse {
   animation: transfer-land-pulse 0.45s ease-out 1;
   border-radius: 0.5rem;
+}
+
+/* ظلال تركواز في الوضع الداكن — استبدالها ببينك في وضع البينك */
+.dark .shadow-accent-sm {
+  box-shadow: 0 2px 6px rgba(20, 184, 166, 0.12);
+}
+.theme-pink.dark .shadow-accent-sm {
+  box-shadow: 0 2px 6px rgba(238, 160, 200, 0.12);
+}
+.dark .shadow-accent-md {
+  box-shadow: 0 4px 24px rgba(20, 184, 166, 0.25);
+}
+.theme-pink.dark .shadow-accent-md {
+  box-shadow: 0 4px 24px rgba(238, 160, 200, 0.25);
+}
+.dark .shadow-accent-md-hover {
+  box-shadow: 0 6px 28px rgba(20, 184, 166, 0.3);
+}
+.theme-pink.dark .shadow-accent-md-hover {
+  box-shadow: 0 6px 28px rgba(238, 160, 200, 0.3);
+}
+.dark .shadow-accent-soft {
+  box-shadow: 0 2px 6px rgba(20, 184, 166, 0.08);
+}
+.theme-pink.dark .shadow-accent-soft {
+  box-shadow: 0 2px 6px rgba(238, 160, 200, 0.08);
 }
 
 /* النقر يصل للـ wrapper وليس للـ input المعطّل */
@@ -228,4 +321,157 @@ input[type="number"].cashbox-input {
 }
 .btn-close-shift:not(:disabled):hover .btn-close-shift-icon {
   transform: scale(1.08);
+}
+
+/* بينك بناتي بنفس نسب تباين التركواز: نصوص متدرجة + خلفيات/حدود بنفس نسب الشفافية */
+.theme-pink.dark [class*='text-teal-50'],
+.theme-pink.dark [class*='text-emerald-50'] { color: rgb(253 242 248 / var(--tw-text-opacity, 1)) !important; }
+.theme-pink.dark [class*='text-teal-100'],
+.theme-pink.dark [class*='text-emerald-100'] { color: rgb(252 231 243 / var(--tw-text-opacity, 1)) !important; }
+.theme-pink.dark [class*='text-teal-200'],
+.theme-pink.dark [class*='text-emerald-200'] {
+  color: rgb(250 212 235 / var(--tw-text-opacity, 1)) !important;
+}
+.theme-pink.dark [class*='text-teal-300'],
+.theme-pink.dark [class*='text-emerald-300'] {
+  color: rgb(248 195 222 / var(--tw-text-opacity, 1)) !important;
+}
+.theme-pink.dark [class*='text-teal-400'],
+.theme-pink.dark [class*='text-emerald-400'] {
+  color: rgb(243 175 210 / var(--tw-text-opacity, 1)) !important;
+}
+.theme-pink.dark [class*='text-teal-500'],
+.theme-pink.dark [class*='text-emerald-500'] {
+  color: rgb(238 160 200 / var(--tw-text-opacity, 1)) !important;
+}
+.theme-pink.dark [class*='text-teal-600'],
+.theme-pink.dark [class*='text-emerald-600'] { color: rgb(220 135 180 / var(--tw-text-opacity, 1)) !important; }
+.theme-pink.dark [class*='text-teal-700'],
+.theme-pink.dark [class*='text-emerald-700'] { color: rgb(195 110 158 / var(--tw-text-opacity, 1)) !important; }
+.theme-pink.dark [class*='text-teal-800'],
+.theme-pink.dark [class*='text-emerald-800'] { color: rgb(168 88 135 / var(--tw-text-opacity, 1)) !important; }
+.theme-pink.dark [class*='text-teal-900'],
+.theme-pink.dark [class*='text-emerald-900'] { color: rgb(140 70 112 / var(--tw-text-opacity, 1)) !important; }
+/* خلفيات/حدود صلبة — بينك بناتي (أقل احمراراً) */
+.theme-pink.dark [class*='bg-teal']:not([class*='/']),
+.theme-pink.dark [class*='bg-emerald']:not([class*='/']) {
+  background-color: rgb(238 160 200 / var(--tw-bg-opacity, 1)) !important;
+}
+.theme-pink.dark [class*='border-teal']:not([class*='/']),
+.theme-pink.dark [class*='border-emerald']:not([class*='/']) {
+  border-color: rgb(238 160 200 / var(--tw-border-opacity, 1)) !important;
+}
+.theme-pink.dark [class*='ring-teal'],
+.theme-pink.dark [class*='ring-emerald'] {
+  --tw-ring-color: rgb(238 160 200 / var(--tw-ring-opacity, 1)) !important;
+}
+.theme-pink.dark [class*='from-teal'],
+.theme-pink.dark [class*='from-emerald'] {
+  --tw-gradient-from: rgb(238 160 200 / var(--tw-gradient-from-position)) !important;
+}
+.theme-pink.dark [class*='to-teal'],
+.theme-pink.dark [class*='to-emerald'] {
+  --tw-gradient-to: rgb(238 160 200 / var(--tw-gradient-to-position)) !important;
+}
+/* خلفيات شفافة — بينك بناتي */
+.theme-pink.dark [class*='bg-teal-500/10'],
+.theme-pink.dark [class*='bg-emerald-500/10'] { background-color: rgb(238 160 200 / 0.1) !important; }
+.theme-pink.dark [class*='bg-teal-500/15'],
+.theme-pink.dark [class*='bg-emerald-500/15'] { background-color: rgb(238 160 200 / 0.15) !important; }
+.theme-pink.dark [class*='bg-teal-500/20'],
+.theme-pink.dark [class*='bg-emerald-500/20'] { background-color: rgb(238 160 200 / 0.2) !important; }
+.theme-pink.dark [class*='bg-teal-500/25'],
+.theme-pink.dark [class*='bg-emerald-500/25'] { background-color: rgb(238 160 200 / 0.25) !important; }
+.theme-pink.dark [class*='bg-teal-500/30'],
+.theme-pink.dark [class*='bg-emerald-500/30'] { background-color: rgb(238 160 200 / 0.3) !important; }
+.theme-pink.dark [class*='bg-teal-500/40'],
+.theme-pink.dark [class*='bg-emerald-500/40'] { background-color: rgb(238 160 200 / 0.4) !important; }
+/* حدود البينك البناتي — خط وبرواز أوضح بدون احمرار */
+.theme-pink.dark [class*='border-teal-500/12'],
+.theme-pink.dark [class*='border-emerald-500/12'] { border-color: rgb(238 160 200 / 0.2) !important; }
+.theme-pink.dark [class*='border-teal-500/14'],
+.theme-pink.dark [class*='border-emerald-500/14'] { border-color: rgb(238 160 200 / 0.22) !important; }
+.theme-pink.dark [class*='border-teal-500/18'],
+.theme-pink.dark [class*='border-emerald-500/18'] { border-color: rgb(238 160 200 / 0.28) !important; }
+.theme-pink.dark [class*='border-teal-500/20'],
+.theme-pink.dark [class*='border-emerald-500/20'] { border-color: rgb(238 160 200 / 0.2) !important; }
+.theme-pink.dark [class*='border-teal-500/24'],
+.theme-pink.dark [class*='border-emerald-500/24'] { border-color: rgb(238 160 200 / 0.35) !important; }
+.theme-pink.dark [class*='border-teal-500/25'],
+.theme-pink.dark [class*='border-emerald-500/25'] { border-color: rgb(238 160 200 / 0.22) !important; }
+.theme-pink.dark [class*='border-teal-500/28'],
+.theme-pink.dark [class*='border-emerald-500/28'] { border-color: rgb(238 160 200 / 0.3) !important; }
+.theme-pink.dark [class*='border-teal-500/30'],
+.theme-pink.dark [class*='border-emerald-500/30'] { border-color: rgb(238 160 200 / 0.28) !important; }
+.theme-pink.dark [class*='border-teal-500/32'],
+.theme-pink.dark [class*='border-emerald-500/32'] { border-color: rgb(238 160 200 / 0.42) !important; }
+.theme-pink.dark [class*='border-teal-500/38'],
+.theme-pink.dark [class*='border-emerald-500/38'] { border-color: rgb(238 160 200 / 0.45) !important; }
+.theme-pink.dark [class*='border-teal-500/40'],
+.theme-pink.dark [class*='border-emerald-500/40'] { border-color: rgb(238 160 200 / 0.35) !important; }
+
+/* أولوية النص الأبيض: إذا العنصر فيه text-white أو dark:text-white مع لون تركواز/بينك، نُبقي الأبيض (لا يُلغى بالـ override أعلاه) */
+.theme-pink.dark [class*='text-teal'][class*='text-white'],
+.dark [class*='text-teal'][class*='text-white'] {
+  color: rgb(255 255 255) !important;
+}
+.theme-pink.dark [class*='text-emerald'][class*='text-white'],
+.dark [class*='text-emerald'][class*='text-white'] {
+  color: rgb(255 255 255) !important;
+}
+
+/* الصف المغلق: تمييز بدون opacity — كتلة أرشيف بلون رمادي موحد وشريط يسار رمادي */
+tr[data-row-closed="true"] {
+  border-left-width: 3px !important;
+  border-left-style: solid !important;
+  border-left-color: rgb(203 213 225) !important;
+  background-color: rgb(241 245 249) !important;
+}
+.dark tr[data-row-closed="true"],
+.theme-pink.dark tr[data-row-closed="true"] {
+  border-left-color: rgb(71 85 105) !important;
+  background-color: rgba(30 41 59 / 0.5) !important;
+}
+tr[data-row-closed="true"] .font-semibold,
+tr[data-row-closed="true"] [class*="font-semibold"] {
+  color: rgb(100 116 139) !important;
+}
+.dark tr[data-row-closed="true"] .font-semibold,
+.dark tr[data-row-closed="true"] [class*="font-semibold"],
+.theme-pink.dark tr[data-row-closed="true"] .font-semibold,
+.theme-pink.dark tr[data-row-closed="true"] [class*="font-semibold"] {
+  color: rgb(148 163 184) !important;
+}
+/* أرقام الصف المغلق بلون أحمر مخفّف */
+tr[data-row-closed="true"] .tabular-nums,
+tr[data-row-closed="true"] + tr[data-row-closed="true"] .tabular-nums {
+  color: rgb(239 68 68) !important; /* red-500 */
+}
+.dark tr[data-row-closed="true"] .tabular-nums,
+.dark tr[data-row-closed="true"] + tr[data-row-closed="true"] .tabular-nums,
+.theme-pink.dark tr[data-row-closed="true"] .tabular-nums,
+.theme-pink.dark tr[data-row-closed="true"] + tr[data-row-closed="true"] .tabular-nums {
+  color: rgb(252 165 165) !important; /* red-300 */
+}
+tr[data-row-closed="true"] + tr[data-row-closed="true"] {
+  background-color: rgb(241 245 249) !important;
+}
+.dark tr[data-row-closed="true"] + tr[data-row-closed="true"],
+.theme-pink.dark tr[data-row-closed="true"] + tr[data-row-closed="true"] {
+  background-color: rgba(30 41 59 / 0.45) !important;
+}
+/* توحيد مظهر كل الخانات في الصف المغلق — إزالة الخلفية البيضاء إن وُجدت */
+tr[data-row-closed="true"] td [class*="min-h-[1.6rem]"][class*="rounded-lg"],
+tr[data-row-closed="true"] + tr[data-row-closed="true"] td [class*="min-h-[1.6rem]"][class*="rounded-lg"] {
+  background-color: rgb(241 245 249) !important;
+  border-color: rgb(203 213 225) !important;
+  color: rgb(239 68 68) !important; /* red-500 مخفّف */
+}
+.dark tr[data-row-closed="true"] td [class*="min-h-[1.6rem]"][class*="rounded-lg"],
+.dark tr[data-row-closed="true"] + tr[data-row-closed="true"] td [class*="min-h-[1.6rem]"][class*="rounded-lg"],
+.theme-pink.dark tr[data-row-closed="true"] td [class*="min-h-[1.6rem]"][class*="rounded-lg"],
+.theme-pink.dark tr[data-row-closed="true"] + tr[data-row-closed="true"] td [class*="min-h-[1.6rem]"][class*="rounded-lg"] {
+  background-color: rgba(30 41 59 / 0.6) !important;
+  border-color: rgba(71 85 105 / 0.5) !important;
+  color: rgb(252 165 165) !important; /* red-300 مخفّف */
 }

@@ -62,7 +62,7 @@ export function CashCalculator({ onApplyToCash, hasActiveRow }: CashCalculatorPr
   }, [hasActiveRow, grandTotal, onApplyToCash, handleClear, counts])
 
   return (
-    <div className="w-full h-full min-h-0 flex flex-col rounded-2xl overflow-hidden border-2 border-stone-400 dark:border-teal-500/25 page-surface-warm-card dark:bg-slate-800/50 shadow-[0_4px_20px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm">
+    <div className="w-full h-full min-h-0 flex flex-col rounded-2xl overflow-hidden border-2 border-stone-400 dark:border-teal-500/14 page-surface-warm-card dark:bg-slate-800/50 shadow-[0_4px_20px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm">
       {/* هيدر — محايد في الوضع الفاتح */}
       <div className="relative bg-stone-200 dark:bg-slate-800 dark:border-slate-600 px-3 sm:px-4 py-1.5 sm:py-2 border-b-2 border-stone-400 dark:border-slate-600 flex items-center justify-between gap-2 shrink-0 shadow-sm">
         <div className="flex items-center gap-2 min-w-0">
@@ -95,7 +95,7 @@ export function CashCalculator({ onApplyToCash, hasActiveRow }: CashCalculatorPr
           <>
             <div className="fixed inset-0 z-[100]" aria-hidden onClick={() => setShowLastTransferred(false)} />
             <div
-              className="fixed z-[101] rounded-xl border-2 border-stone-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-xl py-2 px-3 text-xs font-cairo min-w-[160px] max-h-[280px] overflow-y-auto"
+              className="fixed z-[101] rounded-xl border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-800 shadow-xl py-2 px-3 text-xs font-cairo min-w-[160px] max-h-[280px] overflow-y-auto"
               style={{ right: popoverPosition.right, bottom: popoverPosition.bottom }}
             >
               <div className="font-semibold text-stone-800 dark:text-teal-400 mb-1.5">آخر عمليات رُحّلت إلى الكاش:</div>
@@ -114,7 +114,7 @@ export function CashCalculator({ onApplyToCash, hasActiveRow }: CashCalculatorPr
                       )
                     })}
                   </ul>
-                  <p className="border-t border-stone-300 dark:border-white/10 pt-1 font-semibold text-stone-800 dark:text-teal-400 tabular-nums">
+                  <p className="border-t border-stone-300 dark:border-white/[0.06] pt-1 font-semibold text-stone-800 dark:text-teal-400 tabular-nums">
                     المجموع: {lastTransferredTotal} ريال سعودي
                   </p>
                 </>
@@ -134,7 +134,7 @@ export function CashCalculator({ onApplyToCash, hasActiveRow }: CashCalculatorPr
             return (
               <div
                 key={d}
-                className="flex flex-col items-center gap-2 rounded-xl bg-white dark:bg-slate-800/60 border-2 border-stone-400 dark:border-teal-500/20 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.1)] px-2.5 py-2.5 sm:px-3 sm:py-3 overflow-hidden min-w-[120px]"
+                className="flex flex-col items-center gap-2 rounded-xl bg-white dark:bg-slate-800/60 border-2 border-stone-400 dark:border-teal-500/12 shadow-sm dark:shadow-[0_2px_8px_rgba(0,0,0,0.1)] px-2.5 py-2.5 sm:px-3 sm:py-3 overflow-hidden min-w-[120px]"
               >
                 <span className="text-stone-800 dark:text-teal-400/90 text-xs font-cairo font-semibold tabular-nums w-full text-center">فئة النقد {d}</span>
                 <div className="flex items-center gap-1.5 w-full min-w-0 justify-center">
@@ -143,7 +143,7 @@ export function CashCalculator({ onApplyToCash, hasActiveRow }: CashCalculatorPr
                     aria-label="نقص واحد"
                     onClick={() => setCount(d, Math.max(0, (counts[d] ?? 0) - 1))}
                     disabled={(counts[d] ?? 0) <= 0}
-                    className="flex items-center justify-center w-8 h-8 rounded-md bg-stone-400 dark:bg-slate-700/80 border-2 border-stone-500 dark:border-white/10 text-white dark:text-slate-300 hover:bg-red-100 dark:hover:bg-red-500/20 hover:text-red-600 dark:hover:text-red-400 hover:border-red-400 dark:hover:border-red-500/30 disabled:opacity-40 disabled:pointer-events-none transition shrink-0 shadow-sm dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
+                    className="flex items-center justify-center w-8 h-8 rounded-md bg-stone-400 dark:bg-slate-700/80 border-2 border-stone-500 dark:border-white/[0.06] text-white dark:text-slate-300 hover:bg-red-100 dark:hover:bg-red-500/20 hover:text-red-600 dark:hover:text-red-400 hover:border-red-400 dark:hover:border-red-500/30 disabled:opacity-40 disabled:pointer-events-none transition shrink-0 shadow-sm dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
                   >
                     <span className="text-base font-bold leading-none">−</span>
                   </button>
@@ -160,13 +160,13 @@ export function CashCalculator({ onApplyToCash, hasActiveRow }: CashCalculatorPr
                       const v = e.target.value
                       if (v === '' || Number(v) === 0) setCount(d, 0)
                     }}
-                    className="flex-1 min-w-[2.5rem] max-w-[3.5rem] px-1.5 py-1.5 rounded-md bg-white dark:bg-slate-900/80 border-2 border-stone-400 dark:border-white/10 text-stone-900 dark:text-white text-center text-sm font-cairo tabular-nums cashbox-input focus:border-teal-500/50 focus:ring-2 focus:ring-teal-500/25 dark:focus:border-teal-500/50 dark:focus:ring-teal-500/25 focus:outline-none"
+                    className="flex-1 min-w-[2.5rem] max-w-[3.5rem] px-1.5 py-1.5 rounded-md bg-white dark:bg-slate-900/80 border-2 border-stone-400 dark:border-white/[0.06] text-stone-900 dark:text-white text-center text-sm font-cairo tabular-nums cashbox-input focus:border-teal-500/50 focus:ring-2 focus:ring-teal-500/25 dark:focus:border-teal-500/50 dark:focus:ring-teal-500/16 focus:outline-none"
                   />
                   <button
                     type="button"
                     aria-label="زد واحد"
                     onClick={() => setCount(d, (counts[d] ?? 0) + 1)}
-                    className="flex items-center justify-center w-8 h-8 rounded-md bg-stone-400 dark:bg-slate-700/80 border-2 border-stone-500 dark:border-white/10 text-white dark:text-slate-300 hover:bg-stone-500 dark:hover:bg-emerald-500/20 hover:text-white dark:hover:text-emerald-400 hover:border-stone-600 dark:hover:border-emerald-500/30 transition shrink-0 shadow-sm dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
+                    className="flex items-center justify-center w-8 h-8 rounded-md bg-stone-400 dark:bg-slate-700/80 border-2 border-stone-500 dark:border-white/[0.06] text-white dark:text-slate-300 hover:bg-stone-500 dark:hover:bg-emerald-500/20 hover:text-white dark:hover:text-emerald-400 hover:border-stone-600 dark:hover:border-emerald-500/30 transition shrink-0 shadow-sm dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)]"
                   >
                     <span className="text-base font-bold leading-none">+</span>
                   </button>
@@ -202,7 +202,7 @@ export function CashCalculator({ onApplyToCash, hasActiveRow }: CashCalculatorPr
           <button
             type="button"
             onClick={handleClear}
-            className="flex-1 min-w-0 py-2.5 rounded-xl text-sm font-cairo font-medium bg-stone-400 dark:bg-slate-600/50 hover:bg-stone-500 dark:hover:bg-slate-500/60 text-white dark:text-slate-300 border-2 border-stone-500 dark:border-white/10 transition-all flex items-center justify-center gap-2"
+            className="flex-1 min-w-0 py-2.5 rounded-xl text-sm font-cairo font-medium bg-stone-400 dark:bg-slate-600/50 hover:bg-stone-500 dark:hover:bg-slate-500/60 text-white dark:text-slate-300 border-2 border-stone-500 dark:border-white/[0.06] transition-all flex items-center justify-center gap-2"
           >
             <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M10 11v6M14 11v6"/></svg>
             مسح

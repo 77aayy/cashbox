@@ -4,7 +4,7 @@ import type { TransferFlyRect } from './TransferFlyAnimation'
 
 type Op = '+' | '-' | '*' | '/' | '%'
 
-export type TransferField = 'cash' | 'mada' | 'visa' | 'mastercard' | 'bankTransfer' | 'programBalanceBank'
+export type TransferField = 'cash' | 'mada' | 'visa' | 'mastercard' | 'amex' | 'bankTransfer' | 'programBalanceBank'
 
 interface CalculatorProps {
   onTransfer?: (amount: number, field: TransferField, sourceRect?: TransferFlyRect) => void
@@ -191,11 +191,11 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
 
   const isOp = (k: string) => ['+', '-', '*', '/', '%'].includes(k)
   const btnClass = (k: string) => {
-    if (k === '=') return 'col-span-2 bg-teal-500 hover:bg-teal-600 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-white dark:text-teal-400 font-bold text-lg border-2 border-teal-400 dark:border-teal-500/40 shadow-sm'
-    if (isOp(k)) return 'bg-teal-100 hover:bg-teal-200 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-teal-700 dark:text-teal-400 font-bold border-2 border-teal-300 dark:border-teal-500/40 flex items-center justify-center shadow-sm'
+    if (k === '=') return 'col-span-2 bg-teal-500 hover:bg-teal-600 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-white dark:text-teal-400 font-bold text-lg border-2 border-teal-400 dark:border-teal-500/12 shadow-sm'
+    if (isOp(k)) return 'bg-teal-100 hover:bg-teal-200 dark:bg-teal-500/20 dark:hover:bg-teal-500/30 text-teal-700 dark:text-teal-400 font-bold border-2 border-teal-300 dark:border-teal-500/12 flex items-center justify-center shadow-sm'
     if (k === 'C') return 'bg-red-100 hover:bg-red-200 dark:bg-red-500/20 dark:hover:bg-red-500/30 text-red-600 dark:text-red-400 border-2 border-red-300 dark:border-red-500/40 text-base shadow-sm'
-    if (k === '⌫') return 'bg-stone-400 hover:bg-stone-500 dark:bg-slate-600/40 dark:hover:bg-slate-500/50 text-white dark:text-slate-300 border-2 border-stone-500 dark:border-white/10 text-base shadow-sm'
-    return 'bg-white dark:bg-slate-700/40 hover:bg-stone-100 dark:hover:bg-slate-600/50 text-stone-900 dark:text-slate-200 border-2 border-stone-400 dark:border-white/10 active:scale-[0.98] text-base shadow-sm'
+    if (k === '⌫') return 'bg-stone-400 hover:bg-stone-500 dark:bg-slate-600/40 dark:hover:bg-slate-500/50 text-white dark:text-slate-300 border-2 border-stone-500 dark:border-white/[0.06] text-base shadow-sm'
+    return 'bg-white dark:bg-slate-700/40 hover:bg-stone-100 dark:hover:bg-slate-600/50 text-stone-900 dark:text-slate-200 border-2 border-stone-400 dark:border-white/[0.06] active:scale-[0.98] text-base shadow-sm'
   }
 
   const opIcons: Record<string, JSX.Element> = {
@@ -236,7 +236,7 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
   return (
     <div
       ref={containerRef}
-      className="w-full h-full min-h-0 flex flex-col rounded-2xl overflow-hidden border-2 border-stone-400 dark:border-teal-500/25 page-surface-warm-card dark:bg-slate-800/50 shadow-[0_4px_20px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm"
+      className="w-full h-full min-h-0 flex flex-col rounded-2xl overflow-hidden border-2 border-stone-400 dark:border-teal-500/14 page-surface-warm-card dark:bg-slate-800/50 shadow-[0_4px_20px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.25),0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm"
       tabIndex={0}
       title="انقر هنا ثم استخدم لوحة المفاتيح. النتيجة لا تتغير عند الكتابة في الجدول."
     >
@@ -302,7 +302,7 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
             }}
             disabled={!hasActiveRow || !(parseFloat(display) || 0)}
             title={`ترحيل الرقم إلى ${CALCULATOR_TRANSFER_LABEL}`}
-            className="shrink-0 w-full py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-cairo font-medium bg-teal-500 hover:bg-teal-600 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-white dark:text-emerald-400 border-2 border-teal-400 dark:border-emerald-500/40 disabled:opacity-50 disabled:pointer-events-none transition flex items-center justify-center gap-2 shadow-sm"
+            className="shrink-0 w-full py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-cairo font-medium bg-teal-500 hover:bg-teal-600 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-white dark:text-emerald-400 border-2 border-teal-400 dark:border-emerald-500/24 disabled:opacity-50 disabled:pointer-events-none transition flex items-center justify-center gap-2 shadow-sm"
           >
             <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
             ترحيل إلى {CALCULATOR_TRANSFER_LABEL}
@@ -325,7 +325,7 @@ export function Calculator({ onTransfer, hasActiveRow }: CalculatorProps = {}) {
           <>
             <div className="fixed inset-0 z-[100]" aria-hidden onClick={() => setShowHistory(false)} />
             <div
-              className="fixed z-[101] rounded-xl border-2 border-stone-400 dark:border-white/10 bg-white dark:bg-slate-800 shadow-xl py-2 px-3 text-xs font-cairo min-w-[180px] max-h-[280px] overflow-y-auto"
+              className="fixed z-[101] rounded-xl border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-800 shadow-xl py-2 px-3 text-xs font-cairo min-w-[180px] max-h-[280px] overflow-y-auto"
               style={{ right: popoverPosition.right, bottom: popoverPosition.bottom }}
             >
               <div className="font-semibold text-stone-800 dark:text-teal-400 mb-1.5">سجل العمليات</div>

@@ -26,6 +26,8 @@ function normalizeRow(r: ClosureRow): ClosureRow {
     carriedExpenseCount: typeof raw.carriedExpenseCount === 'number' && raw.carriedExpenseCount >= 0 ? raw.carriedExpenseCount : 0,
     expenseItems,
     mastercard: typeof (r as { mastercard?: number }).mastercard === 'number' ? (r as { mastercard: number }).mastercard : 0,
+    amex: typeof (r as { amex?: number }).amex === 'number' ? (r as { amex: number }).amex : 0,
+    bankTransfer: typeof (r as { bankTransfer?: number }).bankTransfer === 'number' ? (r as { bankTransfer: number }).bankTransfer : 0,
     programBalanceCash: typeof r.programBalanceCash === 'number' ? r.programBalanceCash : 0,
     programBalanceBank: typeof r.programBalanceBank === 'number' ? r.programBalanceBank : 0,
   }
@@ -95,6 +97,7 @@ export function addRow(branch: Branch, employeeName: string, initial?: AddRowIni
     mada: 0,
     visa: 0,
     mastercard: 0,
+    amex: 0,
     bankTransfer: 0,
     programBalanceCash: 0,
     programBalanceBank: 0,

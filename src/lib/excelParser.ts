@@ -142,17 +142,19 @@ function parseAmount(str: string): number {
   return Number.isFinite(num) ? num : 0
 }
 
-/** طريقة الدفع في الملف → حقل الصف (يُستخرج فقط: مدى، فيزا، ماستر كارد، تحويل بنكي) */
-const METHOD_MAP: Record<string, 'cash' | 'mada' | 'visa' | 'mastercard' | 'bankTransfer'> = {
+/** طريقة الدفع في الملف → حقل الصف (يُستخرج: مدى، فيزا، ماستر كارد، أمريكان إكسبريس، تحويل بنكي) */
+const METHOD_MAP: Record<string, 'cash' | 'mada' | 'visa' | 'mastercard' | 'amex' | 'bankTransfer'> = {
   مدى: 'mada',
   فيزا: 'visa',
   'ماستر كارد': 'mastercard',
   'ماستركارد': 'mastercard',
+  'أمريكان إكسبريس': 'amex',
+  'امريكان اكسبريس': 'amex',
   'تحويل بنكي': 'bankTransfer',
   تحويل: 'bankTransfer',
 }
-/** استبعاد صريح: لا نأخذ قيماً من هذه الطرق (شيك، أمريكان إكسبريس، نقداً) */
-const EXCLUDED_METHODS = ['شيك', 'أمريكان إكسبريس', 'امريكان اكسبريس', 'نقداً', 'نقدا', 'كاش']
+/** استبعاد صريح: لا نأخذ قيماً من هذه الطرق (شيك، نقداً) */
+const EXCLUDED_METHODS = ['شيك', 'نقداً', 'نقدا', 'كاش']
 function isExcludedMethod(methodStr: string): boolean {
   const n = methodStr.replace(/\s+/g, ' ').trim()
   return EXCLUDED_METHODS.some((ex) => n === ex || n.includes(ex))
@@ -166,22 +168,22 @@ function extractSumsByRows(
 ): { sums: ExcelSums; counts: ExcelCounts; details: ExcelDetails } {
   const sums = { ...EMPTY_SUMS }
   const counts = { ...EMPTY_COUNTS }
-  const details: ExcelDetails = { mada: [], visa: [], mastercard: [], bankTransfer: [] }
+  const details: ExcelDetails = { mada: [], visa: [], mastercard: [], amex: [], bankTransfer: [] }
   const maxRows = Math.min(data.length, 500)
   for (let r = startRow; r < maxRows; r++) {
     const row = data[r] as (string | number | undefined)[]
     if (!row || !Array.isArray(row)) continue
     const maxCol = Math.min(Math.max(row.length, 4), 120)
-    let methodField: 'mada' | 'visa' | 'mastercard' | 'bankTransfer' | null = null
+    let methodField: 'mada' | 'visa' | 'mastercard' | 'amex' | 'bankTransfer' | null = null
     let methodCol = -1
     for (let c = 0; c < maxCol; c++) {
       const raw = sheet ? getCellText(sheet, row, r, c) : (row[c] ?? '').toString().trim()
       const n = normalizeHeaderCell(raw)
       if (!n) continue
       if (isExcludedMethod(n)) continue
-      const field = (METHOD_MAP as Record<string, string>)[n] ?? (n.includes('مدى') ? 'mada' : null)
+      const field = (METHOD_MAP as Record<string, string>)[n] ?? (n.includes('مدى') ? 'mada' : n.includes('أمريكان') || n.includes('اكسبريس') ? 'amex' : null)
       if (field && field !== 'cash') {
-        methodField = field as 'mada' | 'visa' | 'mastercard' | 'bankTransfer'
+        methodField = field as 'mada' | 'visa' | 'mastercard' | 'amex' | 'bankTransfer'
         methodCol = c
         break
       }
@@ -213,6 +215,7 @@ export interface ExcelSums {
   mada: number
   visa: number
   mastercard: number
+  amex: number
   bankTransfer: number
 }
 
@@ -222,6 +225,7 @@ export interface ExcelCounts {
   mada: number
   visa: number
   mastercard: number
+  amex: number
   bankTransfer: number
 }
 
@@ -240,6 +244,7 @@ export interface ExcelDetails {
   mada: ExcelTransactionDetail[]
   visa: ExcelTransactionDetail[]
   mastercard: ExcelTransactionDetail[]
+  amex: ExcelTransactionDetail[]
   bankTransfer: ExcelTransactionDetail[]
 }
 
@@ -248,6 +253,7 @@ const EMPTY_SUMS: ExcelSums = {
   mada: 0,
   visa: 0,
   mastercard: 0,
+  amex: 0,
   bankTransfer: 0,
 }
 
@@ -256,6 +262,7 @@ const EMPTY_COUNTS: ExcelCounts = {
   mada: 0,
   visa: 0,
   mastercard: 0,
+  amex: 0,
   bankTransfer: 0,
 }
 
@@ -263,6 +270,7 @@ const EMPTY_DETAILS: ExcelDetails = {
   mada: [],
   visa: [],
   mastercard: [],
+  amex: [],
   bankTransfer: [],
 }
 
@@ -600,7 +608,7 @@ export function parseBankTransactionsExcel(
 
     const sums = { ...EMPTY_SUMS }
     const counts = { ...EMPTY_COUNTS }
-    const details: ExcelDetails = { mada: [], visa: [], mastercard: [], bankTransfer: [] }
+    const details: ExcelDetails = { mada: [], visa: [], mastercard: [], amex: [], bankTransfer: [] }
     /** أسماء الموظفين الفريدة في الصفوف المستوردة (بعد فلتر التاريخ والإتجاه) */
     const employeeNames = new Set<string>()
     const afterTime = afterDate.getTime()
@@ -645,7 +653,7 @@ export function parseBankTransactionsExcel(
       const methodNorm = methodStr.replace(/\s+/g, ' ').trim()
       if (methodNorm.includes('إجمالي') || methodNorm.includes('مجموع') || methodNorm.includes('المجموع')) continue
 
-      const field = METHOD_MAP[methodStr] ?? (methodStr.toLowerCase().includes('مدى') ? 'mada' : null)
+      const field = METHOD_MAP[methodStr] ?? (methodStr.toLowerCase().includes('مدى') ? 'mada' : /أمريكان|اكسبريس|امريكان/.test(methodStr) ? 'amex' : null)
       if (field) {
         sums[field] += amountVal
         counts[field] += 1

@@ -3,10 +3,20 @@
   <head>
     <script>
       (function() {
-        var t = localStorage.getItem('cashbox_theme');
-        var isDark = t === 'dark' || (t !== 'light' && true);
-        document.documentElement.classList.toggle('dark', isDark);
-        document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+        var t = localStorage.getItem('cashbox_theme') || 'dark';
+        var isDark = t === 'dark' || t === 'dark-pink';
+        var isPink = t === 'dark-pink';
+        var root = document.documentElement;
+        root.classList.toggle('dark', isDark);
+        root.classList.toggle('theme-pink', isPink);
+        root.setAttribute('data-theme', isPink ? 'pink' : (isDark ? 'dark' : ''));
+        if (isPink) {
+          var decls = '--tw-teal-50: 253 242 248 !important; --tw-teal-100: 252 231 243 !important; --tw-teal-200: 251 207 232 !important; --tw-teal-300: 249 168 212 !important; --tw-teal-400: 244 114 182 !important; --tw-teal-500: 236 72 153 !important; --tw-teal-600: 219 39 119 !important; --tw-teal-700: 190 24 93 !important; --tw-teal-800: 157 23 77 !important; --tw-teal-900: 131 24 67 !important; --tw-emerald-50: 253 242 248 !important; --tw-emerald-100: 252 231 243 !important; --tw-emerald-200: 251 207 232 !important; --tw-emerald-300: 249 168 212 !important; --tw-emerald-400: 244 114 182 !important; --tw-emerald-500: 236 72 153 !important; --tw-emerald-600: 219 39 119 !important; --tw-emerald-700: 190 24 93 !important; --tw-emerald-800: 157 23 77 !important; --tw-emerald-900: 131 24 67 !important';
+          var style = document.createElement('style');
+          style.id = 'cashbox-theme-pink-vars';
+          style.textContent = ':root, html, .theme-pink.dark, .theme-pink.dark * { ' + decls + ' }';
+          document.head.appendChild(style);
+        }
       })();
     </script>
     <meta charset="UTF-8" />

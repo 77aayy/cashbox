@@ -16,6 +16,7 @@ export interface ClosureRow {
   mada: number
   visa: number
   mastercard: number
+  amex: number
   bankTransfer: number
   programBalanceCash: number
   programBalanceBank: number
