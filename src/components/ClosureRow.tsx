@@ -180,7 +180,7 @@ export function ClosureRowComp({
           <button
             type="button"
             onClick={() => onOpenExpenseDetails(row.id)}
-            className={`block w-full py-1 text-sm font-cairo text-center rounded-xl transition cursor-pointer ${isClosed ? 'text-red-500 dark:text-red-300 hover:text-red-600 dark:hover:text-red-200 hover:bg-red-50/80 dark:hover:bg-red-500/10' : 'text-stone-800 dark:text-slate-300 hover:text-stone-900 hover:bg-stone-200 dark:hover:text-teal-400 dark:hover:bg-white/[0.06]'}`}
+            className={`block w-full py-1 text-sm font-cairo text-center rounded-xl transition cursor-pointer ${isClosed ? 'text-red-700 dark:text-red-600 hover:text-red-800 dark:hover:text-red-500 hover:bg-red-50/80 dark:hover:bg-red-500/10' : 'text-stone-800 dark:text-slate-300 hover:text-stone-900 hover:bg-stone-200 dark:hover:text-teal-400 dark:hover:bg-white/[0.06]'}`}
             title="عرض تفاصيل المصروفات"
           >
             {v === 0 ? '—' : formatCurrency(v)}
@@ -190,7 +190,7 @@ export function ClosureRowComp({
       if (isBankWithDetails && onShowExcelDetails) {
         return (
           <div className="flex items-center gap-1 w-full">
-            <span className={`flex-1 min-w-0 py-1 text-sm font-cairo text-center tabular-nums ${isClosed ? 'text-red-500 dark:text-red-300' : 'text-stone-800 dark:text-slate-300'}`}>{v === 0 ? '—' : formatCurrency(v)}</span>
+            <span className={`flex-1 min-w-0 py-1 text-sm font-cairo text-center tabular-nums ${isClosed ? 'text-red-700 dark:text-red-600' : 'text-stone-800 dark:text-slate-300'}`}>{v === 0 ? '—' : formatCurrency(v)}</span>
             <button
               type="button"
               onClick={() => onShowExcelDetails(field, row.id)}
@@ -203,7 +203,7 @@ export function ClosureRowComp({
           </div>
         )
       }
-      return <span className={`block py-1 text-sm font-cairo text-center tabular-nums ${isClosed ? 'text-red-500 dark:text-red-300' : 'text-stone-800 dark:text-slate-300'}`}>{v === 0 ? '—' : formatCurrency(v)}</span>
+      return <span className={`block py-1 text-sm font-cairo text-center tabular-nums ${isClosed ? 'text-red-700 dark:text-red-600' : 'text-stone-800 dark:text-slate-300'}`}>{v === 0 ? '—' : formatCurrency(v)}</span>
     }
     // الصف مفتوح: مدى/فيزا/ماستر/تحويل — دائماً حقل قابل للتعديل اليدوي؛ إن وُجدت تفاصيل إكسل نضيف زر سجل التغيير
     const isExpenses = field === 'expenses'
@@ -307,7 +307,7 @@ export function ClosureRowComp({
 
   /* عند الإغلاق: بدون حدود داخلية أو صندوق — مثل باقي الخانات. عند النشاط: صندوق إدخال */
   const fieldBoxClass = isClosed
-    ? 'min-h-[1.6rem] py-1.5 px-2 border-0 rounded-none bg-transparent text-red-500 dark:text-red-300 text-sm font-cairo text-center tabular-nums'
+    ? 'min-h-[1.6rem] py-1.5 px-2 border-0 rounded-none bg-transparent text-red-700 dark:text-red-600 text-sm font-cairo text-center tabular-nums'
     : 'min-h-[1.6rem] py-1.5 px-2 rounded-lg border-2 border-stone-400 dark:border-white/[0.04] bg-white dark:bg-slate-900/70 text-stone-900 dark:text-white text-sm font-cairo text-center tabular-nums'
 
   /* خلفية صف البيانات — المغلق = كتلة رمادية موحدة، النشط = دافئ/تركواز */
@@ -349,16 +349,16 @@ export function ClosureRowComp({
               <button
                 type="button"
                 onClick={onShowEmployeeNames}
-                className={isClosed ? 'text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 underline underline-offset-1 cursor-pointer transition-colors font-semibold' : 'text-stone-800 dark:text-teal-400 hover:text-stone-900 dark:hover:text-teal-300 underline underline-offset-1 cursor-pointer transition-colors font-semibold'}
+                className={isClosed ? 'text-red-700 dark:text-red-600 hover:text-red-800 dark:hover:text-red-500 underline underline-offset-1 cursor-pointer transition-colors font-semibold' : 'text-stone-800 dark:text-teal-400 hover:text-stone-900 dark:hover:text-teal-300 underline underline-offset-1 cursor-pointer transition-colors font-semibold'}
                 title="عرض أسماء الموظفين"
               >
                 أكثر من موظف
               </button>
             ) : (
-              <span className={`font-semibold ${isClosed ? 'text-red-600 dark:text-red-400' : 'text-stone-900 dark:text-teal-300'}`}>{displayName}</span>
+              <span className={`font-semibold ${isClosed ? 'text-red-700 dark:text-red-600' : 'text-stone-900 dark:text-teal-300'}`}>{displayName}</span>
             )}
-            <span className={isClosed ? 'text-red-500 dark:text-red-400/90' : 'text-stone-500 dark:text-slate-400'}>·</span>
-            <span className={`tabular-nums font-medium ${isClosed ? 'text-red-600 dark:text-red-400' : 'text-stone-600 dark:text-slate-400'}`}>{labelDateTime}</span>
+            <span className={isClosed ? 'text-red-700 dark:text-red-600' : 'text-stone-500 dark:text-slate-400'}>·</span>
+            <span className={`tabular-nums font-medium ${isClosed ? 'text-red-700 dark:text-red-600' : 'text-stone-600 dark:text-slate-400'}`}>{labelDateTime}</span>
             {onOpenShiftNotesModal && (
               <>
                 <span className="text-stone-500 dark:text-slate-400">·</span>
@@ -390,7 +390,7 @@ export function ClosureRowComp({
             )}
             </span>
             {isClosed && (
-              <span className="flex items-center justify-center shrink-0 text-red-500 dark:text-red-300" title="صف مغلق" aria-hidden>
+              <span className="flex items-center justify-center shrink-0 text-red-700 dark:text-red-600" title="صف مغلق" aria-hidden>
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                   <path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -530,10 +530,10 @@ export function ClosureRowComp({
                     type="button"
                     onClick={() => onDeleteRow(row.id)}
                     aria-label="حذف الصف"
-                    className="inline-flex items-center justify-center w-4 h-4 rounded border border-stone-400 dark:border-red-500/20 bg-stone-400 dark:bg-slate-700/50 text-white dark:text-slate-400 hover:bg-red-100 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 transition-all shrink-0"
+                    className="inline-flex items-center justify-center w-6 h-6 rounded border border-stone-400 dark:border-red-500/20 bg-stone-400 dark:bg-slate-700/50 text-white dark:text-slate-400 hover:bg-red-100 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 transition-all shrink-0"
                     title="حذف الصف"
                   >
-                    <svg className="w-2 h-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M18 6L6 18M6 6l12 12" />
                     </svg>
                   </button>
@@ -543,10 +543,10 @@ export function ClosureRowComp({
                     type="button"
                     onClick={() => onPrintRow(row.id)}
                     aria-label="طباعة الصف"
-                    className="inline-flex items-center justify-center w-4 h-4 rounded border border-stone-500 dark:border-teal-500/25 bg-stone-400 dark:bg-slate-700/50 text-white dark:text-slate-400 hover:bg-stone-300 dark:hover:bg-teal-500/15 hover:text-teal-400 transition-all shrink-0"
+                    className="inline-flex items-center justify-center w-6 h-6 rounded border border-stone-500 dark:border-teal-500/25 bg-stone-400 dark:bg-slate-700/50 text-white dark:text-slate-400 hover:bg-stone-300 dark:hover:bg-teal-500/15 hover:text-teal-400 transition-all shrink-0"
                     title="طباعة هذه التقفيلة"
                   >
-                    <svg className="w-2 h-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M6 9V2h12v7" />
                       <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
                       <path d="M6 14h12v8H6z" />

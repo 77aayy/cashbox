@@ -25,16 +25,21 @@ export function getGreeting(date: Date): { label: string; kind: GreetingKind } {
 //    المتوقّع من رصيد البرنامج كاش = كاش + مرسل للخزنة + مصروفات فعّالة
 //    انحراف الكاش = المتوقّع − رصيد البرنامج كاش
 //
-// 4) variance (عند الإغلاق فقط):
-//    المجموع النقدي = كاش + مدى + فيزا + ماستر + تحويل بنكي
-//    رصيد البرنامج الكلي = رصيد البرنامج كاش + رصيد البنك
+// 4) variance (عند الإغلاق فقط — تحويل بنكي لا يدخل):
+//    المجموع النقدي = كاش + مدى + فيزا + ماستر كارد + أمريكان إكسبريس
+//    رصيد البرنامج الكلي = رصيد البرنامج كاش + اجمالى الموازنه
 //    variance = المجموع النقدي − رصيد البرنامج الكلي
 // ───────────────────────────────────────────────────────────────────────────
 
 /** انحراف البنك = بنك نزيل − اجمالى الموازنه (بنك نزيل = مدى+فيزا+ماستر+أمريكان إكسبريس؛ اجمالى الموازنه = programBalanceBank) */
 export function computeBankVariance(row: ClosureRow): number {
-  const totalBudget = row.mada + row.visa + row.mastercard + row.amex
-  return Math.round((totalBudget - row.programBalanceBank) * 100) / 100
+  const mada = row.mada ?? 0
+  const visa = row.visa ?? 0
+  const mastercard = row.mastercard ?? 0
+  const amex = row.amex ?? 0
+  const programBalanceBank = row.programBalanceBank ?? 0
+  const totalBudget = mada + visa + mastercard + amex
+  return Math.round((totalBudget - programBalanceBank) * 100) / 100
 }
 
 /** انحراف الكاش = (كاش + مرسل للخزنة + مصروفات فعّالة) − رصيد البرنامج كاش */
@@ -50,8 +55,15 @@ export function computeCashVariance(row: ClosureRow): number {
 
 /** إجمالي الانحراف (كاش+بنك) — يُستخدم عند إغلاق الشفت فقط (تحويل بنكي لا يدخل في المعادلات) */
 export function computeVariance(row: ClosureRow): number {
-  const sum = row.cash + row.mada + row.visa + row.mastercard + row.amex
-  const program = row.programBalanceCash + row.programBalanceBank
+  const cash = row.cash ?? 0
+  const mada = row.mada ?? 0
+  const visa = row.visa ?? 0
+  const mastercard = row.mastercard ?? 0
+  const amex = row.amex ?? 0
+  const programCash = row.programBalanceCash ?? 0
+  const programBank = row.programBalanceBank ?? 0
+  const sum = cash + mada + visa + mastercard + amex
+  const program = programCash + programBank
   return Math.round((sum - program) * 100) / 100
 }
 

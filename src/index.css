@@ -442,16 +442,16 @@ tr[data-row-closed="true"] [class*="font-semibold"] {
 .theme-pink.dark tr[data-row-closed="true"] [class*="font-semibold"] {
   color: rgb(148 163 184) !important;
 }
-/* أرقام الصف المغلق بلون أحمر مخفّف */
+/* أرقام الصف المغلق بلون أحمر مطابق لزر C */
 tr[data-row-closed="true"] .tabular-nums,
 tr[data-row-closed="true"] + tr[data-row-closed="true"] .tabular-nums {
-  color: rgb(239 68 68) !important; /* red-500 */
+  color: rgb(185 28 28) !important; /* red-700 أحمر صريح */
 }
 .dark tr[data-row-closed="true"] .tabular-nums,
 .dark tr[data-row-closed="true"] + tr[data-row-closed="true"] .tabular-nums,
 .theme-pink.dark tr[data-row-closed="true"] .tabular-nums,
 .theme-pink.dark tr[data-row-closed="true"] + tr[data-row-closed="true"] .tabular-nums {
-  color: rgb(252 165 165) !important; /* red-300 */
+  color: rgb(220 38 38) !important; /* red-600 أحمر صريح */
 }
 tr[data-row-closed="true"] + tr[data-row-closed="true"] {
   background-color: rgb(241 245 249) !important;
@@ -465,7 +465,7 @@ tr[data-row-closed="true"] td [class*="min-h-[1.6rem]"][class*="rounded-lg"],
 tr[data-row-closed="true"] + tr[data-row-closed="true"] td [class*="min-h-[1.6rem]"][class*="rounded-lg"] {
   background-color: rgb(241 245 249) !important;
   border-color: rgb(203 213 225) !important;
-  color: rgb(239 68 68) !important; /* red-500 مخفّف */
+  color: rgb(185 28 28) !important; /* red-700 أحمر صريح */
 }
 .dark tr[data-row-closed="true"] td [class*="min-h-[1.6rem]"][class*="rounded-lg"],
 .dark tr[data-row-closed="true"] + tr[data-row-closed="true"] td [class*="min-h-[1.6rem]"][class*="rounded-lg"],
@@ -473,5 +473,5 @@ tr[data-row-closed="true"] + tr[data-row-closed="true"] td [class*="min-h-[1.6re
 .theme-pink.dark tr[data-row-closed="true"] + tr[data-row-closed="true"] td [class*="min-h-[1.6rem]"][class*="rounded-lg"] {
   background-color: rgba(30 41 59 / 0.6) !important;
   border-color: rgba(71 85 105 / 0.5) !important;
-  color: rgb(252 165 165) !important; /* red-300 مخفّف */
+  color: rgb(220 38 38) !important; /* red-600 أحمر صريح */
 }
