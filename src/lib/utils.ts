@@ -79,10 +79,10 @@ export function toLatinDigits(s: string): string {
   return out
 }
 
-/** تنسيق المبلغ مع الإبقاء على الأرقام الإنجليزية (0–9) */
+/** تنسيق المبلغ مع الإبقاء على الأرقام الإنجليزية (0–9) — الأرقام الصحيحة بدون .00 لتوفير المساحة */
 export function formatCurrency(n: number): string {
   return new Intl.NumberFormat('ar-SA', {
-    minimumFractionDigits: 2,
+    minimumFractionDigits: 0,
     maximumFractionDigits: 2,
     numberingSystem: 'latn',
   }).format(n)

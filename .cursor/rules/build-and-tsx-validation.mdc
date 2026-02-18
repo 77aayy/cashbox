@@ -1,0 +1,35 @@
+---
+description: تشغيل البناء بعد التعديلات + تجنّب أخطاء parser في ملفات TSX
+alwaysApply: true
+---
+
+# التحقق من البناء وتجنّب أخطاء TSX
+
+## تشغيل البناء بعد التعديلات (إلزامي)
+
+- بعد أي تعديل يمس ملفات المشروع (خاصة `.tsx` و `.ts`) يجب تشغيل **البناء** وليس اللينتر فقط.
+- **الأمر:** `npm run build` أو `npx vite build` من جذر المشروع.
+- **السبب:** أخطاء مثل `[plugin:vite:react-babel] Unexpected token, expected ":"` تظهر عند البناء ولا يلتقطها `read_lints`.
+- لا تعتبر المراجعة مكتملة إلا بعد **قراءة الملفات + read_lints + نجاح البناء**.
+
+## تجنّب تعبيرات تربك parser الـ JSX في `.tsx`
+
+- في ملفات **`.tsx`** لا تستخدم نمط: `{ a, b } as const` في نفس التعبير (كائن مباشر + `as const`).
+- الـ parser قد يفسّر `}` كإغلاق تعبير JSX فيظهر خطأ مثل: `Unexpected token, expected ":"`.
+
+**❌ تجنّب:**
+```ts
+const options = sourceRect ? { sourceRect, targetField: field } as const
+```
+
+**✅ بديل 1 — نوع صريح وثلاثي:**
+```ts
+const options: MyOptions | undefined = sourceRect
+  ? { sourceRect, targetField: field }
+  : undefined
+```
+
+**✅ بديل 2 — إحاطة الكائن بأقواس:**
+```ts
+const options = sourceRect ? ({ sourceRect, targetField: field } as const) : undefined
+```

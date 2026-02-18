@@ -39,21 +39,37 @@ textarea:focus-visible,
 .safe-top { padding-top: env(safe-area-inset-top); }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 
-/* خلفية الصفحة — وضع فاتح: لون كريمي دافئ يقلل الإبهار ويحسّن الرؤية */
+/* خلفية الصفحة — وضع فاتح: كريمي دافئ وأقل سطوعاً */
 .page-bg-warm {
-  background-color: #f4ebe0;
+  background: #e8e2d9;
 }
 .dark .page-bg-warm {
-  background-color: transparent;
+  background: transparent;
 }
 
-/* نقش خفيف — نقط دائرية (وضع فاتح: بني دافئ) */
+/* أسطح دافئة للكروت والجدول (أقل بياضاً من الأبيض) */
+.page-surface-warm {
+  background: #f2ede5;
+}
+.page-surface-warm-card {
+  background: #f8f4ee;
+}
+
+/* ترويسة زجاجية — خلفية شفافة + ضبابية حتى يظهر المحتوى خلفها عند التمرير */
+.header-glass {
+  background: rgba(242, 237, 229, 0.035);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+}
+.dark .header-glass {
+  background: rgba(15, 23, 42, 0.035);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+}
+
+/* نقش خفيف — نقط بنية دافئة */
 .page-bg-pattern {
-  background-image: radial-gradient(
-    circle at 50% 50%,
-    rgba(67, 58, 52, 0.06) 1px,
-    transparent 1px
-  );
+  background-image: radial-gradient(circle at 50% 50%, rgba(67, 58, 52, 0.06) 1px, transparent 1px);
   background-size: 28px 28px;
 }
 .dark .page-bg-pattern {
@@ -152,6 +168,23 @@ input[type="number"].cashbox-input {
 
 .locked-cell-pulse {
   animation: locked-cell-pulse-lines 1s ease-out 1;
+  border-radius: 0.5rem;
+}
+
+/* نبضة عند وصول المبلغ المرحّل إلى الخانة المستهدفة */
+@keyframes transfer-land-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(20, 184, 166, 0);
+  }
+  100% {
+    box-shadow: none;
+  }
+}
+.transfer-land-pulse {
+  animation: transfer-land-pulse 0.45s ease-out 1;
   border-radius: 0.5rem;
 }
 

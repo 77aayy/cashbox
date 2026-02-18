@@ -6,6 +6,8 @@ import type { ExcelDetails } from '../lib/excelParser'
 interface ClosureRowProps {
   row: Row
   rowNumber: number
+  /** ترتيب الصف (0-based) لتباين زوجي/فردي */
+  rowIndex?: number
   isFirstActive: boolean
   liveNow: Date
   closingRowId: string | null
@@ -43,9 +45,16 @@ interface ClosureRowProps {
 
 const NUM_KEYS: (keyof Row)[] = ['cash', 'sentToTreasury', 'expenseCompensation', 'expenses', 'programBalanceCash', 'mada', 'visa', 'mastercard', 'bankTransfer', 'programBalanceBank']
 
+/** إطار خفيف لتجميع خانات الكاش أو البنك في الصف — نفس استدارة الرؤوس (xl) للتماثل */
+const FRAME = 'border-stone-200 dark:border-teal-500/20'
+const FRAME_FIRST = `border-t-2 border-b-2 border-r-2 ${FRAME} rounded-s-xl`
+const FRAME_MID = `border-t-2 border-b-2 ${FRAME}`
+const FRAME_LAST = `border-t-2 border-b-2 border-l-2 ${FRAME} rounded-e-xl`
+
 export function ClosureRowComp({
   row,
   rowNumber,
+  rowIndex = 0,
   isFirstActive,
   liveNow,
   closingRowId,
@@ -167,7 +176,7 @@ export function ClosureRowComp({
           <button
             type="button"
             onClick={() => onOpenExpenseDetails(row.id)}
-            className="block w-full py-1.5 text-sm text-stone-800 dark:text-slate-300 font-cairo text-center hover:text-teal-600 hover:bg-stone-200 dark:hover:text-amber-400 dark:hover:bg-white/[0.06] rounded-xl transition cursor-pointer"
+            className="block w-full py-1.5 text-sm text-stone-800 dark:text-slate-300 font-cairo text-center hover:text-stone-900 hover:bg-stone-200 dark:hover:text-teal-400 dark:hover:bg-white/[0.06] rounded-xl transition cursor-pointer"
             title="عرض تفاصيل المصروفات"
           >
             {v === 0 ? '—' : formatCurrency(v)}
@@ -181,7 +190,7 @@ export function ClosureRowComp({
             <button
               type="button"
               onClick={() => onShowExcelDetails(field, row.id)}
-              className="shrink-0 p-1 rounded-lg text-stone-500 hover:text-teal-600 hover:bg-stone-200 dark:hover:text-amber-400 dark:hover:bg-white/10 transition"
+              className="shrink-0 p-1 rounded-lg text-stone-500 hover:text-stone-800 hover:bg-stone-200 dark:hover:text-teal-400 dark:hover:bg-white/10 transition"
               title="سجل التغيير (من إكسل / مرحّل / معدّل يدوياً)"
               aria-label="سجل التغيير"
             >
@@ -236,7 +245,7 @@ export function ClosureRowComp({
         tabIndex={tabIndex}
         disabled={disabled}
         title={disabled ? 'لا يمكن الإدخال قبل إدخال رصيد البرنامج كاش' : (field === 'expenseCompensation' ? 'يجب أن يكون مساوياً أو أقل من مبلغ المصروفات' : undefined)}
-        className="cashbox-input w-full px-2 py-2 rounded-xl bg-white dark:bg-slate-900/70 border-2 border-stone-400 dark:border-white/[0.06] text-stone-900 dark:text-white text-sm font-cairo text-center focus:border-teal-500/50 focus:ring-2 focus:ring-teal-500/20 dark:focus:border-amber-500/40 dark:focus:ring-amber-500/20 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+        className="cashbox-input w-full min-h-[2.25rem] px-2 py-2 rounded-xl bg-white dark:bg-slate-900/70 border-2 border-stone-400 dark:border-white/[0.06] text-stone-900 dark:text-white text-sm font-cairo text-center focus:border-teal-500/50 focus:ring-2 focus:ring-teal-500/20 dark:focus:border-teal-500/40 dark:focus:ring-teal-500/20 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
       />
     )
     if (disabled && onLockedFieldClick) {
@@ -270,7 +279,7 @@ export function ClosureRowComp({
           <button
             type="button"
             onClick={() => onShowExcelDetails(field, row.id)}
-            className="shrink-0 p-1 rounded-lg text-stone-500 hover:text-teal-600 hover:bg-stone-200 dark:hover:text-amber-400 dark:hover:bg-white/10 transition"
+            className="shrink-0 p-1 rounded-lg text-stone-500 hover:text-stone-800 hover:bg-stone-200 dark:hover:text-teal-400 dark:hover:bg-white/10 transition"
             title="سجل التغيير (من إكسل / مرحّل / معدّل يدوياً)"
             aria-label="سجل التغيير"
           >
@@ -289,138 +298,164 @@ export function ClosureRowComp({
   const labelDateTime = isClosed && row.closedAt ? formatDateTime(row.closedAt) : formatDateTime(liveNow)
 
   /* ثابتان عند تمرير الصفحة: تحت الترويسة (top-14=56px) + thead (~48px) + label (~36px) — ليبقيا ظاهرين عند السكرول للأسفل */
-  const stickyLabelClass = isStickyRows ? 'sticky top-[6.5rem] sm:top-[7rem] z-[9] bg-stone-50 dark:bg-slate-800/95 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] border-b border-stone-300 dark:border-amber-500/15' : ''
-  const stickyDataClass = isStickyRows ? 'sticky top-[8.75rem] sm:top-[9.25rem] z-[9] bg-white dark:bg-slate-800/95 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] border-b border-stone-400 dark:border-amber-500/15' : ''
+  const stickyLabelClass = isStickyRows ? 'sticky top-[6.5rem] sm:top-[7rem] z-[9] bg-[#ebe6df]/98 dark:bg-slate-800/98 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] border-b-2 border-stone-500 dark:border-teal-500/20' : ''
+  const stickyDataClass = isStickyRows ? 'sticky top-[8.75rem] sm:top-[9.25rem] z-[9] bg-white dark:bg-slate-800/95 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] border-b-2 border-stone-500 dark:border-teal-500/20' : ''
+
+  /* خلفية صف البيانات — نضعها على الخانات الوسطى فقط؛ تحديد وم وإجراءات شفافة */
+  const rowBgClass =
+    isUndoPeriod
+      ? 'bg-sky-100 dark:bg-sky-500/10'
+      : isClosed
+        ? rowIndex % 2 === 0
+          ? 'bg-[#f2ede5] dark:bg-slate-800/40'
+          : 'bg-[#ebe6df] dark:bg-slate-800/25'
+        : rowIndex % 2 === 0
+          ? 'bg-[#f8f4ee] dark:bg-slate-800/30 hover:bg-[#f2ede5] dark:hover:bg-slate-800/40'
+          : 'bg-[#f2ede5] dark:bg-slate-800/20 hover:bg-[#ebe6df] dark:hover:bg-slate-800/35'
 
   return (
     <>
-      {/* صف التسمية: اسم الموظف + التاريخ — شريط لوني يسار + حدود أوضح للوضع الفاتح */}
-      <tr data-row-id={row.id} className={`bg-stone-50 dark:bg-amber-500/[0.06] border-l-2 border-l-teal-500 dark:border-l-amber-500/40 border-b-2 border-stone-400 dark:border-amber-500/15 ${isStickyRows ? 'sticky-label-row' : ''}`}>
+      {/* صف التسمية: اسم الموظف + التاريخ — خلفية شفافة + لمسة تركواز يسار فقط */}
+      <tr data-row-id={row.id} className={`bg-transparent border-l-4 border-l-teal-500 dark:border-l-teal-500/40 border-b-2 border-stone-500 dark:border-teal-500/20 ${isStickyRows ? 'sticky-label-row' : ''}`}>
         <td
           colSpan={16}
-          className={`py-1 px-2 sm:px-3 align-middle text-[10px] sm:text-[11px] font-semibold font-cairo text-stone-800 dark:text-amber-200/90 whitespace-nowrap ${stickyLabelClass}`}
-          style={{ lineHeight: 1.2, verticalAlign: 'middle' }}
+          className={`py-1 px-2 sm:px-3 align-middle text-[10px] sm:text-[11px] font-semibold font-cairo whitespace-nowrap ${stickyLabelClass}`}
+          style={{ lineHeight: 1.2, verticalAlign: 'middle', paddingInlineStart: '4%' }}
         >
-          <span className="inline-flex items-center gap-2 flex-wrap rounded-lg border-2 border-teal-400 dark:border-amber-500/25 bg-teal-50 dark:bg-amber-500/10 px-2.5 py-1 shadow-md dark:shadow-[0_2px_6px_rgba(245,158,11,0.08)]">
+          <span className="inline-flex items-center gap-2 flex-wrap rounded-lg border-2 border-stone-400 dark:border-teal-500/30 bg-stone-50 dark:bg-teal-500/10 px-2.5 py-1 shadow-sm dark:shadow-[0_2px_6px_rgba(20,184,166,0.08)]">
             {displayName === 'أكثر من موظف' && onShowEmployeeNames ? (
               <button
                 type="button"
                 onClick={onShowEmployeeNames}
-                className="text-teal-600 dark:text-amber-400/95 hover:text-teal-700 dark:hover:text-amber-300 underline underline-offset-1 cursor-pointer transition-colors"
+                className="text-stone-800 dark:text-teal-400 hover:text-stone-900 dark:hover:text-teal-300 underline underline-offset-1 cursor-pointer transition-colors font-semibold"
                 title="عرض أسماء الموظفين"
               >
                 أكثر من موظف
               </button>
             ) : (
-              <span className="font-semibold">{displayName}</span>
+              <span className="font-semibold text-stone-900 dark:text-teal-300">{displayName}</span>
             )}
             <span className="text-stone-500 dark:text-slate-400">·</span>
-            <span className="tabular-nums font-semibold text-stone-600 dark:text-slate-400">{labelDateTime}</span>
+            <span className="tabular-nums font-medium text-stone-600 dark:text-slate-400">{labelDateTime}</span>
           </span>
         </td>
       </tr>
-      {/* صف البيانات — تباين أوضح في الوضع الفاتح */}
+      {/* صف البيانات — خلفية الصف على الخانات الوسطى فقط؛ تحديد وم وإجراءات شفافة */}
       <tr
         data-row-id={row.id}
-        className={`${
+        className={`bg-transparent ${
           isUndoPeriod
-            ? 'bg-sky-100 dark:bg-sky-500/10 animate-pulse border-l-2 border-r-2 border-l-sky-400/50 border-r-sky-400/50 border-b-2 border-stone-400 dark:border-amber-500/15'
-            : isClosed ? 'bg-stone-100 dark:bg-slate-800/30 border-b-2 border-stone-400 dark:border-amber-500/15' : 'bg-white dark:bg-slate-800/20 hover:bg-stone-50 dark:hover:bg-slate-800/35 border-b-2 border-stone-400 dark:border-amber-500/15 transition-colors'
+            ? 'animate-pulse border-l-2 border-r-2 border-l-sky-400/50 border-r-sky-400/50 border-b-2 border-stone-500 dark:border-teal-500/20'
+            : 'border-b-2 border-stone-500 dark:border-slate-600 transition-colors'
         } ${isStickyRows ? 'sticky-data-row' : ''}`}
         style={pulseDuration ? { animationDuration: pulseDuration } : undefined}
       >
-        <td className={`p-1.5 text-center align-middle border-r-2 border-stone-400 dark:border-amber-500/10 ${stickyDataClass}`}>
+        <td className={`p-1 text-center align-middle bg-transparent ${stickyDataClass}`}>
           {onToggleSelect && (
             <div className="flex items-center justify-center">
             <button
               type="button"
               onClick={() => onToggleSelect(row.id)}
               aria-label={isSelected ? 'إلغاء تحديد الصف' : 'تحديد الصف للطباعة'}
-              className={`inline-flex items-center justify-center w-5 h-5 rounded-lg border-2 transition-all ${
+              className={`inline-flex items-center justify-center w-4 h-4 rounded-md border-2 transition-all ${
                 isSelected
-                  ? 'border-teal-500 bg-teal-100 text-teal-600 ring-2 ring-teal-500/30 ring-offset-2 ring-offset-stone-50 dark:border-amber-500/60 dark:bg-amber-500/20 dark:text-amber-400 dark:ring-amber-500/30 dark:ring-offset-slate-800'
-                  : 'border-2 border-stone-400 dark:border-white/20 bg-stone-300 dark:bg-slate-800/60 text-stone-800 dark:text-slate-400 hover:border-teal-400 dark:hover:border-amber-500/40 hover:text-teal-600 dark:hover:text-amber-400/90 shadow-sm'
+                  ? 'border-teal-500 bg-teal-100 text-teal-600 ring-2 ring-teal-500/30 ring-offset-2 ring-offset-stone-50 dark:border-teal-500/60 dark:bg-teal-500/20 dark:text-teal-400 dark:ring-teal-500/30 dark:ring-offset-slate-800'
+                  : 'border-2 border-stone-500 dark:border-white/20 bg-stone-300 dark:bg-slate-800/60 text-stone-800 dark:text-slate-400 hover:border-teal-400 dark:hover:border-teal-500/40 hover:text-teal-600 dark:hover:text-teal-400/90 shadow-sm'
               }`}
             >
               {isSelected ? (
-                <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg className="w-2 h-2 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M20 6L9 17l-5-5" />
                 </svg>
               ) : (
-                <span className="w-2.5 h-2.5 block shrink-0" />
+                <span className="w-2 h-2 block shrink-0" />
               )}
             </button>
             </div>
           )}
         </td>
-        <td className={`p-1.5 text-center text-stone-800 dark:text-slate-500 text-sm font-medium font-cairo border-r-2 border-stone-400 dark:border-amber-500/10 align-middle tabular-nums ${stickyDataClass}`}>{rowNumber}</td>
+        <td className={`p-1 text-center text-stone-800 dark:text-slate-400 text-xs font-medium font-cairo align-middle tabular-nums bg-transparent ${stickyDataClass}`}>{rowNumber}</td>
         {NUM_KEYS.slice(0, 4).map((k) => (
         <td
           key={k}
-          className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle ${lockedPulseField === k ? 'locked-cell-pulse' : ''} ${stickyDataClass}`}
+          data-transfer-target
+          data-field={k}
+          data-row-id={row.id}
+          className={`p-1.5 text-center align-middle ${rowBgClass} ${lockedPulseField === k ? 'locked-cell-pulse' : ''} ${stickyDataClass} ${k === 'cash' ? FRAME_FIRST : FRAME_MID}`}
         >
           {renderNum(k)}
         </td>
       ))}
       <td
-        className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle ${programBalancePulse && isFirstActive ? 'program-balance-pulse-cell' : ''} ${stickyDataClass}`}
+        data-transfer-target
+        data-field="programBalanceCash"
+        data-row-id={row.id}
+        className={`p-1.5 text-center align-middle ${rowBgClass} ${programBalancePulse && isFirstActive ? 'program-balance-pulse-cell' : ''} ${stickyDataClass} ${FRAME_MID}`}
         title={!programBalanceFilled && isFirstActive ? 'لا يمكن الإدخال في الخانات الأخرى قبل إدخال رصيد البرنامج كاش هنا' : undefined}
       >
         {renderNum('programBalanceCash')}
       </td>
-      <td className={`p-1.5 text-center font-bold font-cairo align-middle border-2 border-red-300 dark:border-red-500/20 rounded-xl bg-red-50 dark:bg-slate-800/40 shadow-sm dark:shadow-[0_0_0_1px_rgba(248,113,113,0.08)] ${cashVarianceColor} ${stickyDataClass}`}>
+      <td className={`p-1.5 text-center align-middle ${rowBgClass} ${stickyDataClass} ${FRAME_LAST}`}>
         {onShowVarianceExplanation ? (
           <button
             type="button"
             onClick={() => onShowVarianceExplanation('cash', row)}
-            className={`block w-full py-1.5 rounded-lg transition cursor-pointer hover:bg-red-100/50 dark:hover:bg-white/[0.06] ${cashVariance === 0 ? 'cursor-default hover:bg-transparent' : ''}`}
+            className={`block w-full min-h-[2.25rem] py-2 px-2 rounded-xl border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums transition cursor-pointer hover:bg-stone-50 dark:hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-teal-500/20 ${cashVariance === 0 ? 'cursor-default text-stone-500 dark:text-slate-500' : `${cashVarianceColor}`}`}
             title={cashVariance === 0 ? undefined : 'شرح سبب انحراف الكاش'}
             disabled={cashVariance === 0}
           >
             {cashVariance === 0 ? '—' : formatCurrency(cashVariance)}
           </button>
         ) : (
-          <span className="block py-1">{cashVariance === 0 ? '—' : formatCurrency(cashVariance)}</span>
+          <span className={`block w-full min-h-[2.25rem] py-2 px-2 rounded-xl border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums ${cashVariance === 0 ? 'text-stone-500 dark:text-slate-500' : cashVarianceColor}`}>{cashVariance === 0 ? '—' : formatCurrency(cashVariance)}</span>
         )}
       </td>
       {NUM_KEYS.slice(5, 9).map((k) => (
         <td
           key={k}
-          className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle ${lockedPulseField === k ? 'locked-cell-pulse' : ''} ${stickyDataClass}`}
+          data-transfer-target
+          data-field={k}
+          data-row-id={row.id}
+          className={`p-1.5 text-center align-middle ${rowBgClass} ${lockedPulseField === k ? 'locked-cell-pulse' : ''} ${stickyDataClass} ${k === 'mada' ? FRAME_FIRST : FRAME_MID}`}
         >
           {renderNum(k)}
         </td>
       ))}
-      <td className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle bg-stone-300 dark:bg-slate-800/40 ${stickyDataClass}`}>
-        <span className="block py-1.5 text-sm text-teal-700 dark:text-emerald-400/95 font-semibold font-cairo tabular-nums">
+      <td className={`p-1.5 text-center align-middle ${rowBgClass} ${stickyDataClass} ${FRAME_MID}`}>
+        <span className="block w-full min-h-[2.25rem] py-2 px-2 rounded-xl border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums text-stone-800 dark:text-slate-200 font-medium">
           {(() => {
             const total = row.mada + row.visa + row.mastercard
             return total === 0 ? '—' : formatCurrency(total)
           })()}
         </span>
       </td>
-      <td className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle ${lockedPulseField === 'programBalanceBank' ? 'locked-cell-pulse' : ''} ${stickyDataClass}`}>
+      <td
+        data-transfer-target
+        data-field="programBalanceBank"
+        data-row-id={row.id}
+        className={`p-1.5 text-center align-middle ${rowBgClass} ${lockedPulseField === 'programBalanceBank' ? 'locked-cell-pulse' : ''} ${stickyDataClass} ${FRAME_MID}`}
+      >
         {renderNum('programBalanceBank')}
       </td>
-      <td className={`p-1.5 text-center font-bold font-cairo align-middle border-2 border-red-300 dark:border-red-500/20 rounded-xl bg-red-50 dark:bg-slate-800/40 shadow-sm dark:shadow-[0_0_0_1px_rgba(248,113,113,0.08)] ${bankVarianceColor} ${stickyDataClass}`}>
+      <td className={`p-1.5 text-center align-middle ${rowBgClass} ${stickyDataClass} ${FRAME_LAST}`}>
         {onShowVarianceExplanation ? (
           <button
             type="button"
             onClick={() => onShowVarianceExplanation('bank', row)}
-            className={`block w-full py-1.5 rounded-lg transition cursor-pointer hover:bg-red-100/50 dark:hover:bg-white/[0.06] ${bankVariance === 0 ? 'cursor-default hover:bg-transparent' : ''}`}
+            className={`block w-full min-h-[2.25rem] py-2 px-2 rounded-xl border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums transition cursor-pointer hover:bg-stone-50 dark:hover:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-teal-500/20 ${bankVariance === 0 ? 'cursor-default text-stone-500 dark:text-slate-500' : `${bankVarianceColor}`}`}
             title={bankVariance === 0 ? undefined : 'شرح سبب انحراف البنك'}
             disabled={bankVariance === 0}
           >
             {bankVariance === 0 ? '—' : formatCurrency(bankVariance)}
           </button>
         ) : (
-          <span className="block py-1">{bankVariance === 0 ? '—' : formatCurrency(bankVariance)}</span>
+          <span className={`block w-full min-h-[2.25rem] py-2 px-2 rounded-xl border-2 border-stone-400 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 text-sm font-cairo text-center tabular-nums ${bankVariance === 0 ? 'text-stone-500 dark:text-slate-500' : bankVarianceColor}`}>{bankVariance === 0 ? '—' : formatCurrency(bankVariance)}</span>
         )}
       </td>
-      <td className={`p-1.5 text-center border-r-2 border-stone-400 dark:border-amber-500/10 align-middle overflow-hidden min-w-0 ${stickyDataClass}`}>
+      <td className={`px-0.5 py-0.5 text-center align-middle overflow-hidden min-w-0 bg-transparent ${stickyDataClass}`}>
         {isClosed ? (
-          <div className="flex flex-row items-center justify-center gap-1 flex-wrap min-w-0 w-full">
-            <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-500/15 border border-emerald-300 dark:border-emerald-500/25 text-[9px] font-medium text-emerald-700 dark:text-emerald-400/95 font-cairo whitespace-nowrap shrink-0">
+          <div className="flex flex-row items-center justify-center gap-0.5 flex-wrap min-w-0 w-full">
+            <span className="inline-flex items-center gap-0.5 rounded-full px-1 py-0.5 bg-emerald-100 dark:bg-emerald-500/15 border border-emerald-300 dark:border-emerald-500/25 text-[8px] font-medium text-emerald-700 dark:text-emerald-400/95 font-cairo whitespace-nowrap shrink-0">
               <svg className="w-2 h-2 text-emerald-600 dark:text-emerald-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 6L9 17l-5-5" />
               </svg>
@@ -433,10 +468,10 @@ export function ClosureRowComp({
                     type="button"
                     onClick={() => onDeleteRow(row.id)}
                     aria-label="حذف الصف"
-                    className="inline-flex items-center justify-center w-5 h-5 rounded-md border-2 border-stone-400 dark:border-red-500/20 bg-stone-400 dark:bg-slate-700/50 text-white dark:text-slate-400 hover:bg-red-100 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 hover:border-red-400 dark:hover:border-red-500/30 transition-all shrink-0 shadow-sm"
+                    className="inline-flex items-center justify-center w-4 h-4 rounded border border-stone-400 dark:border-red-500/20 bg-stone-400 dark:bg-slate-700/50 text-white dark:text-slate-400 hover:bg-red-100 dark:hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 transition-all shrink-0"
                     title="حذف الصف"
                   >
-                    <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <svg className="w-2 h-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M18 6L6 18M6 6l12 12" />
                     </svg>
                   </button>
@@ -446,10 +481,10 @@ export function ClosureRowComp({
                     type="button"
                     onClick={() => onPrintRow(row.id)}
                     aria-label="طباعة الصف"
-                    className="inline-flex items-center justify-center w-5 h-5 rounded-md border-2 border-teal-400 dark:border-amber-500/20 bg-stone-400 dark:bg-slate-700/50 text-white dark:text-slate-400 hover:bg-teal-100 dark:hover:bg-amber-500/15 hover:text-teal-600 dark:hover:text-amber-400 hover:border-teal-300 dark:hover:border-amber-500/30 transition-all shrink-0 shadow-sm"
+                    className="inline-flex items-center justify-center w-4 h-4 rounded border border-stone-500 dark:border-teal-500/25 bg-stone-400 dark:bg-slate-700/50 text-white dark:text-slate-400 hover:bg-stone-300 dark:hover:bg-teal-500/15 hover:text-teal-400 transition-all shrink-0"
                     title="طباعة هذه التقفيلة"
                   >
-                    <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg className="w-2 h-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M6 9V2h12v7" />
                       <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
                       <path d="M6 14h12v8H6z" />
@@ -465,12 +500,12 @@ export function ClosureRowComp({
               type="button"
               onClick={() => onClearRow(row.id)}
               title="افراغ كل المدخلات في الصف النشط"
-              className="inline-flex items-center justify-center gap-0.5 rounded-full px-1.5 py-0.5 bg-teal-100 dark:bg-amber-500/15 border-2 border-teal-400 dark:border-amber-500/25 text-[9px] font-medium text-teal-700 dark:text-amber-400 font-cairo whitespace-nowrap w-full min-w-0 truncate hover:bg-teal-200 dark:hover:bg-amber-500/25 transition"
+              className="inline-flex items-center justify-center rounded px-0.5 py-0.5 bg-stone-200 dark:bg-teal-500/15 border border-stone-400 dark:border-teal-500/30 text-[8px] font-medium text-stone-800 dark:text-teal-400 font-cairo whitespace-nowrap w-full min-w-0 truncate hover:bg-stone-300 dark:hover:bg-teal-500/25 transition"
             >
-              افراغ الصف
+              افراغ
             </button>
           ) : (
-            <span className="inline-flex items-center justify-center gap-0.5 rounded-full px-1.5 py-0.5 bg-teal-100 dark:bg-amber-500/15 border-2 border-teal-400 dark:border-amber-500/25 text-[9px] font-medium text-teal-700 dark:text-amber-400 font-cairo whitespace-nowrap w-full min-w-0 truncate">
+            <span className="inline-flex items-center justify-center rounded px-0.5 py-0.5 bg-stone-200 dark:bg-teal-500/15 border border-stone-400 dark:border-teal-500/30 text-[8px] font-medium text-stone-800 dark:text-teal-400 font-cairo whitespace-nowrap w-full min-w-0 truncate">
               الشفت الحالي
             </span>
           )

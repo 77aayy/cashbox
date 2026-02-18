@@ -35,7 +35,7 @@ if errorlevel 1 (
 
 echo.
 echo نشر قواعد Firestore على Firebase...
-call firebase deploy
+call npx firebase deploy
 if errorlevel 1 (
   echo فشل نشر Firebase. تحقق من تسجيل الدخول: firebase login
 ) else (
