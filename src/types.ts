@@ -25,6 +25,14 @@ export interface ClosureRow {
   notes: string
   closedAt: string | null
   createdAt: string
+  /** تفاصيل عمليات الإكسل المستوردة (إن وُجدت) ليتم الاحتفاظ بها وعرضها لاحقاً */
+  excelHistory?: {
+    mada?: { amount: number; purpose?: string; employeeName?: string }[]
+    visa?: { amount: number; purpose?: string; employeeName?: string }[]
+    mastercard?: { amount: number; purpose?: string; employeeName?: string }[]
+    amex?: { amount: number; purpose?: string; employeeName?: string }[]
+    bankTransfer?: { amount: number; purpose?: string; employeeName?: string }[]
+  }
 }
 
 export type FilterPreset = 'today' | 'yesterday' | 'lastWeek'

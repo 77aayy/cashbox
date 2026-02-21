@@ -165,40 +165,40 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
     }
     setClosingRowId(null)
     setClosingEndsAt(null)
-    ;(async () => {
-      try {
-        const pending = debounceRef.current[rowId]
-        if (pending) {
-          clearTimeout(pending)
-          delete debounceRef.current[rowId]
-          updateRow(branch, rowId, fromState)
+      ; (async () => {
+        try {
+          const pending = debounceRef.current[rowId]
+          if (pending) {
+            clearTimeout(pending)
+            delete debounceRef.current[rowId]
+            updateRow(branch, rowId, fromState)
+          }
+          const fromStorage = getRowById(branch, rowId)
+          const merged = fromStorage
+            ? { ...fromStorage, ...fromState, id: rowId, status: 'active' as const }
+            : fromState
+          const v = computeVariance(merged)
+          await closeRow(branch, rowId, { ...merged, employeeName: name, variance: v })
+          const closedExpenses = merged.expenses ?? 0
+          const closedCompensation = merged.expenseCompensation ?? 0
+          const netCarried = Math.max(0, closedExpenses - closedCompensation)
+          const closedItems = merged.expenseItems ?? []
+          const hasCompensation = closedCompensation > 0
+          const carriedItems = hasCompensation
+            ? (netCarried > 0 ? [{ amount: netCarried, description: 'مرحّل (صافي بعد التعويض)' }] : [])
+            : closedItems.map((it) => ({ amount: it.amount, description: it.description || '' }))
+          addRow(branch, name, {
+            expenses: netCarried,
+            expenseItems: carriedItems,
+            carriedExpenseCount: carriedItems.length,
+          })
+          await loadRows()
+          setToast({ msg: 'تم إغلاق الشفت وإضافة صف جديد', type: 'success' })
+          setCalculatorsResetKey((k) => k + 1)
+        } catch (e) {
+          setToast({ msg: 'فشل ترحيل الصف المغلَق إلى السحابة — تحقق من الاتصال', type: 'error' })
         }
-        const fromStorage = getRowById(branch, rowId)
-        const merged = fromStorage
-          ? { ...fromStorage, ...fromState, id: rowId, status: 'active' as const }
-          : fromState
-        const v = computeVariance(merged)
-        await closeRow(branch, rowId, { ...merged, employeeName: name, variance: v })
-        const closedExpenses = merged.expenses ?? 0
-        const closedCompensation = merged.expenseCompensation ?? 0
-        const netCarried = Math.max(0, closedExpenses - closedCompensation)
-        const closedItems = merged.expenseItems ?? []
-        const hasCompensation = closedCompensation > 0
-        const carriedItems = hasCompensation
-          ? (netCarried > 0 ? [{ amount: netCarried, description: 'مرحّل (صافي بعد التعويض)' }] : [])
-          : closedItems.map((it) => ({ amount: it.amount, description: it.description || '' }))
-        addRow(branch, name, {
-          expenses: netCarried,
-          expenseItems: carriedItems,
-          carriedExpenseCount: carriedItems.length,
-        })
-        await loadRows()
-        setToast({ msg: 'تم إغلاق الشفت وإضافة صف جديد', type: 'success' })
-        setCalculatorsResetKey((k) => k + 1)
-      } catch (e) {
-        setToast({ msg: 'فشل ترحيل الصف المغلَق إلى السحابة — تحقق من الاتصال', type: 'error' })
-      }
-    })()
+      })()
   }, [closingSecondsLeft, closingRowId, rows, name, loadRows, branch])
 
   const displayRows = useMemo(() => {
@@ -278,7 +278,7 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
       }
       const totalExtracted = sums.mada + sums.visa + sums.mastercard + sums.amex
       const employeeName = (excelEmployeeName && excelEmployeeName.trim() !== '') ? excelEmployeeName.trim() : current.employeeName
-      const nextRow = { ...current, ...filled, employeeName, variance: computeVariance({ ...current, ...filled, employeeName }) }
+      const nextRow = { ...current, ...filled, employeeName, excelHistory: details, variance: computeVariance({ ...current, ...filled, employeeName }) }
       updateRow(branch, active.id, nextRow)
       rowDataRef.current[active.id] = nextRow
       setRows((prev) => prev.map((r) => (r.id === active.id ? nextRow : r)))
@@ -327,11 +327,11 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
     setExpenseModal((m) =>
       m
         ? {
-            ...m,
-            items: m.items.map((it, i) =>
-              i === index ? { ...it, [field]: field === 'amount' ? String(value) : String(value) } : it
-            ),
-          }
+          ...m,
+          items: m.items.map((it, i) =>
+            i === index ? { ...it, [field]: field === 'amount' ? String(value) : String(value) } : it
+          ),
+        }
         : null
     )
   }, [])
@@ -1234,18 +1234,18 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
               >
                 {theme === 'light' ? (
                   <svg className="w-4 h-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <circle cx="12" cy="12" r="3.5"/>
-                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42-1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l-1.42-1.42"/>
+                    <circle cx="12" cy="12" r="3.5" />
+                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42-1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l-1.42-1.42" />
                   </svg>
                 ) : theme === 'dark' ? (
                   <svg className="w-4 h-4 text-teal-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <circle cx="12" cy="8" r="3.5"/>
-                    <path d="M6 21v-1.5a3.5 3.5 0 0 1 3.5-3.5h5a3.5 3.5 0 0 1 3.5 3.5V21"/>
+                    <circle cx="12" cy="8" r="3.5" />
+                    <path d="M6 21v-1.5a3.5 3.5 0 0 1 3.5-3.5h5a3.5 3.5 0 0 1 3.5 3.5V21" />
                   </svg>
                 ) : (
                   <svg className="w-4 h-4 text-pink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <circle cx="12" cy="7" r="3.5"/>
-                    <path d="M8.5 11L12 20l3.5-9"/>
+                    <circle cx="12" cy="7" r="3.5" />
+                    <path d="M8.5 11L12 20l3.5-9" />
                   </svg>
                 )}
               </button>
@@ -1333,11 +1333,10 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                   key={f.id}
                   type="button"
                   onClick={() => setFilter(f.id)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
-                    filter === f.id
-                      ? 'bg-teal-500/30 text-teal-900 border-2 border-teal-600 dark:bg-teal-500/25 dark:text-white dark:border-teal-500/24 shadow-sm'
-                      : 'text-stone-700 border border-transparent hover:bg-stone-300 hover:text-stone-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-300'
-                  }`}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${filter === f.id
+                    ? 'bg-teal-500/30 text-teal-900 border-2 border-teal-600 dark:bg-teal-500/25 dark:text-white dark:border-teal-500/24 shadow-sm'
+                    : 'text-stone-700 border border-transparent hover:bg-stone-300 hover:text-stone-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-300'
+                    }`}
                 >
                   {f.label}
                 </button>
@@ -1511,11 +1510,10 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
                     key={p}
                     type="button"
                     onClick={() => goToClosedPage(p)}
-                    className={`inline-flex items-center justify-center min-w-[2.25rem] px-2 py-2 rounded-xl text-sm font-cairo font-medium transition-all ${
-                      p === currentClosedPage
-                        ? 'bg-teal-500 dark:bg-teal-500/40 text-white border border-teal-500 dark:border-teal-500/32'
-                        : 'border border-stone-300 dark:border-teal-500/18 bg-stone-50 dark:bg-teal-500/10 text-stone-800 dark:text-teal-400/95 hover:bg-stone-200 dark:hover:bg-teal-500/20'
-                    }`}
+                    className={`inline-flex items-center justify-center min-w-[2.25rem] px-2 py-2 rounded-xl text-sm font-cairo font-medium transition-all ${p === currentClosedPage
+                      ? 'bg-teal-500 dark:bg-teal-500/40 text-white border border-teal-500 dark:border-teal-500/32'
+                      : 'border border-stone-300 dark:border-teal-500/18 bg-stone-50 dark:bg-teal-500/10 text-stone-800 dark:text-teal-400/95 hover:bg-stone-200 dark:hover:bg-teal-500/20'
+                      }`}
                     aria-label={p === 1 ? 'الرئيسية' : `صفحة ${p}`}
                   >
                     {p === 1 ? '١' : p}
@@ -1633,11 +1631,12 @@ export function CashBox({ name, branch, onExit, onSwitchBranch, theme, onToggleT
         />
       )}
 
-      {excelDetailModal && lastExcelDetails && (() => {
+      {excelDetailModal && (() => {
         const { field, rowId } = excelDetailModal
-        const list = lastExcelDetails[field] ?? []
-        const fromExcel = list.reduce((s, t) => s + t.amount, 0)
         const row = rows.find((r) => r.id === rowId)
+        if (!row || !row.excelHistory) return null
+        const list = row.excelHistory[field] ?? []
+        const fromExcel = list.reduce((s, t) => s + t.amount, 0)
         const currentInCell = row ? ((row[field] as number) ?? 0) : 0
         const diff = currentInCell - fromExcel
         const labels: Record<keyof ExcelDetails, string> = {

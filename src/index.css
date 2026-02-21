@@ -442,15 +442,15 @@ tr[data-row-closed="true"] [class*="font-semibold"] {
 .theme-pink.dark tr[data-row-closed="true"] [class*="font-semibold"] {
   color: rgb(148 163 184) !important;
 }
-/* أرقام الصف المغلق بلون أحمر مطابق لزر C */
-tr[data-row-closed="true"] .tabular-nums,
-tr[data-row-closed="true"] + tr[data-row-closed="true"] .tabular-nums {
+/* أرقام الصف المغلق بلون أحمر مطابق لزر C (باستثناء شارة الوقت) */
+tr[data-row-closed="true"] .tabular-nums:not(.time-badge),
+tr[data-row-closed="true"] + tr[data-row-closed="true"] .tabular-nums:not(.time-badge) {
   color: rgb(185 28 28) !important; /* red-700 أحمر صريح */
 }
-.dark tr[data-row-closed="true"] .tabular-nums,
-.dark tr[data-row-closed="true"] + tr[data-row-closed="true"] .tabular-nums,
-.theme-pink.dark tr[data-row-closed="true"] .tabular-nums,
-.theme-pink.dark tr[data-row-closed="true"] + tr[data-row-closed="true"] .tabular-nums {
+.dark tr[data-row-closed="true"] .tabular-nums:not(.time-badge),
+.dark tr[data-row-closed="true"] + tr[data-row-closed="true"] .tabular-nums:not(.time-badge),
+.theme-pink.dark tr[data-row-closed="true"] .tabular-nums:not(.time-badge),
+.theme-pink.dark tr[data-row-closed="true"] + tr[data-row-closed="true"] .tabular-nums:not(.time-badge) {
   color: rgb(220 38 38) !important; /* red-600 أحمر صريح */
 }
 tr[data-row-closed="true"] + tr[data-row-closed="true"] {
